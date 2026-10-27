@@ -1,0 +1,8 @@
+# Source art and the scripts that pack it into public/ (not needed to build or serve the site)
+art
+scripts
+.next
+node_modules
+*.tsbuildinfo
+# Local secrets (the deployment reads its own from the project's environment variables)
+.env*

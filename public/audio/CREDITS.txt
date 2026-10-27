@@ -1,0 +1,22 @@
+Music, all from Mixkit (https://mixkit.co/free-stock-music/), under the Mixkit Stock Music Free License
+(https://mixkit.co/license/#musicFree): free for commercial use, no attribution required.
+
+sleepy-cat.mp3          "Sleepy Cat" by Alejandro Magaña (A. M.)
+sweet-september.mp3     "Sweet September" by Arulo
+lofi-02.mp3             "Lo-Fi 02" by Lily J
+lofi-01.mp3             "Lo-Fi 01" by Lily J
+slow-rain.mp3           "Slow Rain" by Alejandro Magaña (A. M.)
+thinking-about-you.mp3  "Thinking About You" by Arulo
+lofi-04.mp3             "Lo-Fi 04" by Lily J
+slow-walk.mp3           "Slow Walk" by Michael Ramir C.
+lofi-03.mp3             "Lo-Fi 03" by Lily J
+lofi-05.mp3             "Lo-Fi 05" by Lily J
+just-walk.mp3           "Just Walk" by Diego Nava
+winter-wind.mp3         "Winter Wind" by Diego Nava
+day-dreamin.mp3         "Day Dreamin' with U" by Michael Ramir C.
+nostalgic-night.mp3     "Nostalgic Night" by Michael Ramir C.
+green-chair.mp3         "Green Chair RnB" by Diego Nava
+serene-view.mp3         "Serene View" by Arulo
+chill-bro.mp3           "Chill Bro" by Diego Nava
+
+Edited for this site (art/music/playlist.py): silence trimmed, loudness matched, short fades, 128 kbps.
