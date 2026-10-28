@@ -73,6 +73,24 @@ const topBar = (width: number) => (width <= 760 ? 104 : 72);
 /** Kept this far (px) in from the screen's sides. */
 const SIDE = 8;
 
+/** The map and the "seen" count, up the right-hand side (px; read again every half second, as the
+ *  count's pill changes width): a bubble up there went under them. */
+const hud = { at: -Infinity, left: Infinity, bottom: 0 };
+function hudBox() {
+  const now = performance.now();
+  if (now - hud.at < 500) return hud;
+  hud.at = now;
+  hud.left = Infinity;
+  hud.bottom = 0;
+  for (const sel of [".map", ".check__head"]) {
+    const r = document.querySelector(sel)?.getBoundingClientRect();
+    if (!r?.width) continue;
+    hud.left = Math.min(hud.left, r.left);
+    hud.bottom = Math.max(hud.bottom, r.bottom);
+  }
+  return hud;
+}
+
 /**
  * A speech bubble sits over its speaker (centred on its label's point, or, `above`, stood on it); near
  * the edge of the screen, or up under the page's bar at the top (on a phone, where the courier's head
@@ -95,7 +113,14 @@ export function keepOnScreen(el: HTMLElement, x: number, y: number, width: numbe
   if (x - w / 2 < SIDE) dx = SIDE - (x - w / 2);
   else if (x + w / 2 > width - SIDE) dx = width - SIDE - (x + w / 2);
   const top = y - (above ? h : h / 2);
-  const dy = Math.max(0, topBar(width) - top);
+  let dy = Math.max(0, topBar(width) - top);
+  // Out from under the map and the count: along to the left of them, or, with no room there, down below.
+  const box = hudBox();
+  if (top + dy < box.bottom + 6 && x + dx + w / 2 > box.left - 8) {
+    const left = box.left - 8 - (x + w / 2);
+    if (x + left - w / 2 >= SIDE) dx = Math.min(dx, left);
+    else dy = box.bottom + 6 - top;
+  }
   if (Math.abs(dx - parseFloat(el.dataset.dx || "0")) < 0.5 && Math.abs(dy - parseFloat(el.dataset.dy || "0")) < 0.5) return;
   el.dataset.dx = String(dx);
   el.dataset.dy = String(dy);

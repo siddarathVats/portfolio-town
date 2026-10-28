@@ -120,6 +120,8 @@ export function buildPlan() {
   const taken: { p: THREE.Vector3; r: number; road?: boolean; building?: boolean }[] = [];
   const landmarks: Landmark[] = [];
   const npcs: Npc[] = [];
+  /** Kerb runs: which side of the road (-1, 1), and from and to s (m). */
+  const kerbs: [number, number, number][] = [];
   const v = new THREE.Vector3();
   const free = (p: THREE.Vector3, rad: number) => taken.every((t) => t.p.distanceTo(p) > t.r + rad);
   const claim = (p: THREE.Vector3, rad: number, building = false) => rad > 0 && taken.push({ p: p.clone(), r: rad, building });
@@ -490,13 +492,18 @@ export function buildPlan() {
   for (const b of BLOCKS.filter((x) => x.label && zoneAt(x.s) === "town")) P.roadGlyphs(along(b.s - 3.2, -0.45), r);
   for (let s = t0; s < t1; s += 4 + r() * 5) P.wear(along(s, (r() - 0.5) * 1.3), r);
   // Kerbs along the lane, with the odd manhole.
-  // One continuous kerb: overlapping pieces (so no joints are inked), broken now and then by a
-  // driveway dip.
+  // One continuous kerb, broken now and then by a driveway dip: the runs here, swept along the
+  // road's curve (kerbStrip). (Built of straight 64 cm stones, every one stuck out a corner past
+  // the next on a bend, and the ink drew each corner: a sawtooth down both sides of the street.)
   const gaps = [-1, 1].map(() => new Set<number>());
   for (let s = t0; s < t1; s += 0.5) for (const g of gaps) if (r() < 0.012) for (let k = 0; k < 4; k++) g.add(Math.round(s / 0.5) + k);
+  const open: ([number, number, number] | null)[] = [null, null];
   for (let s = t0; s < t1; s += 0.5) {
     [-1, 1].forEach((side, i) => {
-      if (!gaps[i].has(Math.round(s / 0.5))) P.kerb(along(s, side * (ROAD_HALF + 0.08)), 0.64, 0.14);
+      if (gaps[i].has(Math.round(s / 0.5))) return void (open[i] = null);
+      const run = open[i];
+      if (run) run[2] = s + 0.32;
+      else kerbs.push((open[i] = [side, s - 0.32, s + 0.32]));
     });
     if (r() < 0.012) P.manhole(along(s + 0.5, (r() - 0.5) * 0.5));
   }
@@ -685,6 +692,7 @@ export function buildPlan() {
     npcs,
     garden,
     pickables,
+    kerbs,
   };
 }
 
@@ -729,6 +737,45 @@ export function roadStrip(s0: number, s1: number, l0: number, l1: number, lift: 
         idx.push(p, p + 1, q, p + 1, q + 1, q);
       }
     n++;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * A kerb along the road from s0 to s1, centred lat across it: its top and both faces as one run
+ * that follows the road's curve. Each corner is doubled so the faces shade flat across and the
+ * edges stay crisp. It stands from just under the pavement to top above the bare ground.
+ */
+export function kerbStrip(s0: number, s1: number, lat: number, half = 0.1, top = 0.08, step = 0.25) {
+  // (across: up the face at lat - half, over the top, down the face at lat + half)
+  const prof: [number, number][] = [
+    [-half, 0],
+    [-half, top],
+    [-half, top],
+    [half, top],
+    [half, top],
+    [half, 0],
+  ];
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const a = new THREE.Vector3();
+  const rows = Math.max(1, Math.ceil((s1 - s0) / step));
+  for (let i = 0; i <= rows; i++) {
+    const s = s0 + ((s1 - s0) * i) / rows;
+    for (const [x, y] of prof) {
+      beside(s, lat + x, a).setLength(PLANET_RADIUS + y);
+      pos.push(a.x, a.y, a.z);
+    }
+    if (i)
+      for (let k = 0; k < prof.length; k += 2) {
+        const p = (i - 1) * prof.length + k;
+        const q = i * prof.length + k;
+        idx.push(p, p + 1, q, p + 1, q + 1, q);
+      }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));

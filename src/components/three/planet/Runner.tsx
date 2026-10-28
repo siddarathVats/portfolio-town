@@ -79,7 +79,7 @@ export function Runner({ shadows: mapSize }: { shadows: number }) {
 
   // ?debug: where the bridge is, so tests can run the courier up its ramp, and the courier itself.
   useEffect(() => {
-    if (location.search.includes("debug")) Object.assign(window, { __bridgeS: BRIDGE_S, __walker: walker });
+    if (/[?&](debug|fps)/.test(location.search)) Object.assign(window, { __bridgeS: BRIDGE_S, __walker: walker });
   }, [walker]);
 
   // The opening shot: the whole little planet, then a swoop down behind the courier.

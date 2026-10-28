@@ -1489,10 +1489,6 @@ export function wire(g: Geo, a: THREE.Vector3, b: THREE.Vector3, sag: number, up
   }
 }
 
-/** A run of kerb, along z. */
-export function kerb(k: Kit, l: number, h = 0.15) {
-  k.box(0, 0, 0, 0.2, h, l, C.curb);
-}
 /** Drain grate and manhole cover, flush with the road. */
 export function grate(k: Kit) {
   // Long side along the gutter (z), slots across it.

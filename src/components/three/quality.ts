@@ -2,8 +2,8 @@ import type { PaceMode } from "./pacer";
 
 /**
  * - high: a discrete graphics card (full resolution, big shadow map, live glass blur).
- * - mid: integrated laptop graphics (Intel Iris/UHD, AMD APUs, Apple): the same world drawn at a
- *   lower internal resolution, a smaller shadow map and no live blur behind the glass panels. On an
+ * - mid: integrated laptop graphics (Intel Iris/UHD, AMD APUs, Apple): the same world with a smaller
+ *   shadow map and no live blur behind the glass panels. On an
  *   Iris Xe at 1800×900 the full-quality frame measured 16-19 delivered fps with uneven pacing,
  *   which makes any animation look jerky; this tier is sized to hold a steady frame instead.
  * - low: phones and low-core devices (no shadows).
@@ -13,8 +13,11 @@ export type Tier = "high" | "mid" | "low";
 export type Quality = { tier: Tier; dpr: number; shadow: 0 | 1024 | 2048; blur: boolean };
 
 export const QUALITY: Record<Tier, Quality> = {
-  high: { tier: "high", dpr: 1.25, shadow: 2048, blur: true },
-  mid: { tier: "mid", dpr: 0.75, shadow: 1024, blur: false },
+  high: { tier: "high", dpr: 1.5, shadow: 2048, blur: true },
+  // (full resolution: measured on an Iris Xe at 1920×911, it cost the GPU 11.3 ms a frame against
+  // 10.2 ms at 0.75, where the picture, stretched a third again to the screen, looked soft and
+  // unfinished. The frame's cost is mostly the scene, not its pixels.)
+  mid: { tier: "mid", dpr: 1, shadow: 1024, blur: false },
   low: { tier: "low", dpr: 0.75, shadow: 0, blur: false },
 };
 
@@ -59,6 +62,8 @@ const subs = new Set<() => void>();
 export const liveQuality = {
   /** Set once the visitor picks settings themselves (the ?fps switches): no automatic changes after. */
   manual: false,
+  /** The lowest pixel ratio the automatic step-down goes to (Scene sets it higher on phones). */
+  floor: 0.6,
   get: () => live,
   set(p: Partial<Live>) {
     live = { ...live, ...p };

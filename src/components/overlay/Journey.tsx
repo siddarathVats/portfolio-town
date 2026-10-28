@@ -144,12 +144,16 @@ export default function Journey() {
           const dy = reduce ? 0 : side === "center" ? 36 : side === "bottom" ? 60 : 0;
 
           if (section.id === "home") {
+            // (the name and intro stay up for the first few strides, then go: let go from the first
+            // pixel of the walk, it was half gone a second and a half in, before it could be read.
+            // Played, it is fully up for 5.5 s, half gone at 7.9 and gone at 9.1, just before the
+            // About card comes up at 9.7)
             gsap.set(panel, { autoAlpha: 1 });
             gsap.to(panel, {
               autoAlpha: 0,
               y: reduce ? 0 : -50,
-              ease: "none",
-              scrollTrigger: { trigger: section, start: "top top", end: "55% top", scrub: true },
+              ease: "power1.in",
+              scrollTrigger: { trigger: section, start: "83% top", end: "128% top", scrub: true },
             });
             return;
           }

@@ -63,10 +63,19 @@ export function createGovernor() {
   const late: number[] = [];
   let probing = false;
   let probeAt = 0;
-  let backoff = 6000;
+  // (the first try at the faster rate comes soon: a few late frames as the walk starts shouldn't cost
+  // seconds of half rate; each failed try doubles the wait)
+  let backoff = 3000;
   return {
     reset() {
       late.length = 0;
+    },
+    /** Forget everything, as at the start: no try pending, no backing off. */
+    fresh() {
+      late.length = 0;
+      probing = false;
+      probeAt = 0;
+      backoff = 3000;
     },
     frame(now: number, missed: boolean, v: number) {
       const { minK, maxK } = paceBounds(v);
@@ -80,7 +89,7 @@ export function createGovernor() {
         probeAt = now + backoff;
       } else if (probing && late.length >= 60) {
         probing = false;
-        backoff = 6000;
+        backoff = 3000;
       } else if (!probing && pacer.k > minK && now > probeAt && late.length >= 60) {
         const budget = (pacer.k - 1) * v;
         const fits = pct(pacer.main, 0.9) < budget * 0.7 && (!pacer.gpu.length || pct(pacer.gpu, 0.9) < budget * 0.75);

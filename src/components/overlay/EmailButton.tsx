@@ -5,7 +5,7 @@ import { person } from "@/content/portfolio";
 
 /**
  * "Email": copies the address to the clipboard (rather than opening a mail app the visitor may not
- * use), says so, and shows the address under it for anyone who'd rather read it off the screen.
+ * use), and says so. The address itself isn't shown on the page.
  */
 export function EmailButton() {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
@@ -38,20 +38,17 @@ export function EmailButton() {
     }
     setState(ok ? "copied" : "failed");
     setSaid("");
-    window.requestAnimationFrame(() => setSaid(ok ? "Email address copied to the clipboard" : "Couldn't copy. The address is shown below the button."));
+    window.requestAnimationFrame(() => setSaid(ok ? "Email address copied to the clipboard" : "Couldn't copy the address"));
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setState("idle"), 2500);
   };
 
   return (
     <span className="email">
-      <button type="button" className="btn btn--bright" onClick={copy} aria-describedby="email-addr">
-        {state === "copied" ? "Copied ✓" : "Email"}
+      <button type="button" className="btn btn--bright" onClick={copy}>
+        {state === "copied" ? "Copied ✓" : state === "failed" ? "Couldn't copy" : "Email"}
         <span className="sr-only"> (copies the address)</span>
       </button>
-      <span id="email-addr" className="email__addr">
-        {person.email}
-      </span>
       <span className="sr-only" role="status" aria-live="polite">
         {said}
       </span>

@@ -36,6 +36,8 @@ const TRACKS: { src: string; moods: Mood[] }[] = [
 const RECENT = 6;
 const RECENT_KEY = "walk:recent";
 const VOLUME = 0.5;
+/** The low-pass at the front door (Hz), as if heard from indoors. */
+const HOME_CUTOFF = 2600;
 /** Seconds of crossfade between tracks. */
 const XFADE = 6;
 /** A change of weather has to last this long (s), and the track have played this long, to change track for it. */
@@ -191,13 +193,14 @@ class Sound {
     return this.decks[this.live];
   }
 
-  /** Muffled at home, fully open by the first stop down the street. */
+  /** A little muffled at home, fully open by the first stop down the street. (At 900 Hz at the door,
+   *  only the bass came through: the music seemed not to have started till the walk set off.) */
   private cutoff(p: number) {
     const leap = blockStarts[blockIndexById.setoff];
     const fall = blockStarts[blockIndexById.origins];
-    if (p <= leap) return 900;
+    if (p <= leap) return HOME_CUTOFF;
     const t = Math.min(1, (p - leap) / (fall - leap));
-    return 900 * Math.pow(20000 / 900, t * t);
+    return HOME_CUTOFF * Math.pow(20000 / HOME_CUTOFF, t * t);
   }
 
   /** The next track: one for the mood if there is one not played lately, else any not played lately. */
@@ -252,7 +255,7 @@ class Sound {
       d.started = t;
       d.gain.gain.cancelScheduledValues(t);
       d.gain.gain.setValueAtTime(0, t);
-      d.gain.gain.linearRampToValueAtTime(1, t + (out ? fade : 0.6));
+      d.gain.gain.linearRampToValueAtTime(1, t + (out ? fade : 0.3));
       if (!out) return;
       out.gain.gain.cancelScheduledValues(t);
       out.gain.gain.setValueAtTime(out.gain.gain.value, t);
@@ -361,8 +364,10 @@ class Sound {
       return;
     }
     this.disarm?.();
+    // (up in about a second: brought in over three, the first notes were near silent, and it seemed
+    // to start well after the tap)
     gain.gain.cancelScheduledValues(ctx.currentTime);
-    gain.gain.setTargetAtTime(VOLUME, ctx.currentTime, 0.8);
+    gain.gain.setTargetAtTime(VOLUME, ctx.currentTime, 0.3);
     if (!this.ticking) {
       this.ticking = true;
       gsap.ticker.add(this.tick);

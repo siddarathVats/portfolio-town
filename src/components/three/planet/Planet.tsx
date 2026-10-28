@@ -19,7 +19,7 @@ import { ARCH_HALF, ARCH_RISE } from "./props";
 import { BOUQUET_MID, Townsperson, bouquetCard, pickBouquet } from "./sprite";
 import { bladeMaterial, flowerMaterial, leafDepthMaterial, leafMaterial, wind } from "./foliage";
 import { LOD_LAYER, warmUp } from "./warm";
-import { FALL_T, PAVE_HALF, ROAD_HALF, buildPlan, heightAt, roadStrip, roadStretches, streamStrip, type Npc, type Pickable } from "./plan";
+import { FALL_T, PAVE_HALF, ROAD_HALF, buildPlan, heightAt, kerbStrip, roadStrip, roadStretches, streamStrip, type Npc, type Pickable } from "./plan";
 import { Waterfall, streamMaterial } from "./Water";
 import { Life } from "./Life";
 import { Umbrella } from "./umbrella";
@@ -757,6 +757,7 @@ export function Planet() {
       verge: strips(st.paved, -PAVE_HALF - 0.9, -PAVE_HALF + 0.05, 0.012).concat(strips(st.paved, PAVE_HALF - 0.05, PAVE_HALF + 0.9, 0.012)),
       asphalt: strips(st.paved, -ROAD_HALF, ROAD_HALF, 0.035),
       edges: strips(st.paved, -ROAD_HALF + 0.1, -ROAD_HALF + 0.18, 0.042).concat(strips(st.paved, ROAD_HALF - 0.18, ROAD_HALF - 0.1, 0.042)),
+      kerb: mergeGeometries(plan.kerbs.map(([side, a, b]) => kerbStrip(a, b, side * (ROAD_HALF + 0.08)))),
       dirt: strips(st.dirt, -ROAD_HALF * 0.85, ROAD_HALF * 0.85, 0.025),
       // Dashes down the middle of the paved road.
       dashes: mergeGeometries(
@@ -770,7 +771,7 @@ export function Planet() {
       bank: streamStrip(1.35, 0.015, -1.3, FALL_T + 0.04),
       water: streamStrip(1.0, 0.03),
     };
-  }, []);
+  }, [plan]);
   const mats = useMemo(
     () => ({
       ground: groundMaterial(),
@@ -796,6 +797,7 @@ export function Planet() {
       {ground.pave.map((g, i) => (
         <mesh key={`p${i}`} geometry={g} material={mats.pave} receiveShadow />
       ))}
+      <mesh geometry={ground.kerb} material={mats.pave} receiveShadow />
       {ground.asphalt.map((g, i) => (
         <mesh key={`a${i}`} geometry={g} material={mats.asphalt} receiveShadow />
       ))}

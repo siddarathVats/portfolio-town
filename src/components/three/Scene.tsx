@@ -6,7 +6,7 @@ import { EffectComposer, Noise, SMAA, Vignette } from "@react-three/postprocessi
 import * as THREE from "three";
 import { SCENE_READY_EVENT, journey } from "@/lib/journey";
 import { LOD_LAYER, warmUp } from "./planet/warm";
-import { QUALITY, detectTier, liveQuality, type Tier } from "./quality";
+import { QUALITY, detectTier, liveQuality, type Live, type Tier } from "./quality";
 import { createGovernor, keep, pacer, paceBounds, pct, type PaceMode } from "./pacer";
 import { Rig } from "./Rig";
 import { Planet } from "./planet/Planet";
@@ -50,10 +50,15 @@ function DebugStepper() {
   const setFrameloop = useThree((s) => s.setFrameloop);
   const get = useThree((s) => s.get);
   useEffect(() => {
+    // (?fps: the scene's state to read, for measuring the walk as it runs; no manual clock)
+    if (location.search.includes("fps")) (window as unknown as { __r3f: typeof get }).__r3f = get;
     if (!location.search.includes("debug")) return;
     let t = -1;
-    const w = window as unknown as { __step: (n?: number, dt?: number) => unknown; __r3f: typeof get };
+    const w = window as unknown as { __step: (n?: number, dt?: number) => unknown; __r3f: typeof get; __pacer: typeof pacer; __quality: typeof liveQuality };
     w.__r3f = get;
+    // (and the frame pacing and quality, so tests can play the automatic step-down through)
+    w.__pacer = pacer;
+    w.__quality = liveQuality;
     w.__step = (n = 60, dt = 1 / 60) => {
       if (t < 0) {
         // Manual clock from zero: every step is exactly dt.
@@ -73,17 +78,35 @@ function DebugStepper() {
  * the same time; this lowers the cost when it can only manage half the display's rate, or when it
  * can't even keep to the slowest rate it may draw at (where the browser itself caps pages at 30 fps,
  * as Chrome's energy saver does, half the display's rate isn't on offer, and frames that miss show as
- * a jerky 20-30): after 4 s of that, one step down (resolution, then the shadow map, then the edge
+ * a jerky 20-30): after 4 s of that, one step down (the shadow map, then resolution, then the edge
  * smoothing pass), then the pacer tries the full rate again. Where the GPU can be timed and isn't what
  * is holding the frame back (a busy main thread), a lower resolution wouldn't help, so it leaves the
  * picture as it is. It only ever steps down, so it can't flip-flop (each step resizes buffers and
  * hitches once).
  */
 function AutoQuality() {
-  const st = useRef({ t: 0, slowSince: 0, done: false });
+  const st = useRef({ t: 0, slowSince: 0, done: false, undo: null as null | { q: Live; ms: number; at: number } });
   useFrame(() => {
     const s = st.current;
+    // (the delivered frame time, middle of the last 2 s of frames)
+    const recentMs = () => pct(journey.frameMs.slice(-Math.round(2000 / (pacer.k * pacer.vsync))), 0.5);
+    if (s.undo && performance.now() >= s.undo.at) {
+      // A step down that didn't bring the frames any closer together only cost the picture: put it
+      // back and stop. (Where the browser itself holds the page to 20-30 fps, as on an Iris Xe
+      // whose GPU was busy with other work, frames came every 50 ms at 1x, 0.75x and 1.25x alike, and
+      // the steps took the picture down to 0.75x and then switched the edge smoothing off: blocky
+      // stair-steps on every line, for nothing.)
+      if (!liveQuality.manual && recentMs() > s.undo.ms * 0.9) {
+        liveQuality.set(s.undo.q);
+        s.done = true;
+      }
+      s.undo = null;
+    }
+    // (and not while the window is in the background: a browser slows the frames of a window it
+    // isn't showing in front, and that read as a GPU that couldn't keep up, the picture stepped down
+    // for good)
     if (s.done || liveQuality.manual || pacer.mode !== "auto" || document.visibilityState !== "visible") return;
+    if (!document.hasFocus()) return void (s.slowSince = 0);
     s.t += journey.dt;
     if (s.t < 6) return; // let the opening swoop and the first streets pass
     const now = performance.now();
@@ -98,10 +121,13 @@ function AutoQuality() {
     // (at the cap, the GPU timing can't be trusted to say it isn't the GPU: drivers under-report it)
     const gpuBound = capped || !pacer.gpu.length || pct(pacer.gpu, 0.9) > pacer.vsync * pacer.minK * 0.75;
     const q = liveQuality.get();
-    if (gpuBound && q.dpr > 0.62) liveQuality.set({ dpr: Math.max(0.6, q.dpr * 0.85) });
-    else if (gpuBound && q.shadow > 1024) liveQuality.set({ shadow: 1024 });
+    s.undo = { q, ms: recentMs(), at: now + 5000 };
+    // (the shadow map first: the resolution is the last thing given up, the one that shows. On an
+    // Iris Xe, 0.75x saved 1 ms of the GPU's 11 against 1x, and the picture went soft)
+    if (gpuBound && q.shadow > 1024) liveQuality.set({ shadow: 1024 });
+    else if (gpuBound && q.dpr > liveQuality.floor + 0.02) liveQuality.set({ dpr: Math.max(liveQuality.floor, q.dpr * 0.85) });
     else if (gpuBound && q.aa !== "off") liveQuality.set({ aa: "off" });
-    else return void (s.done = true); // as light as it goes, or not the GPU: an even half rate it is
+    else return void ((s.done = true), (s.undo = null)); // as light as it goes, or not the GPU: an even half rate it is
     pacer.retry = 1;
     s.slowSince = now + 3000; // judge the new setting after it settles
   });
@@ -112,6 +138,9 @@ function AutoQuality() {
  * Draws the scene on chosen display refreshes, with the refresh's own timestamp (see pacer.ts), and
  * measures each frame's main-thread and GPU time for that choice and for the ?fps meter.
  */
+/** From the loader lifting to the end of the opening swoop (ms): Runner's pause before it and INTRO. */
+const OPENING_MS = 4000;
+
 function Pacer({ mode }: { mode: PaceMode }) {
   const get = useThree((s) => s.get);
   const gl = useThree((s) => s.gl);
@@ -134,6 +163,25 @@ function Pacer({ mode }: { mode: PaceMode }) {
     channel.port1.onmessage = () => keep(pacer.main, performance.now() - started);
     const ticks: number[] = [];
     const governor = createGovernor();
+    // Until the world is up (the loader's warm-up frames compile every shader and upload every
+    // texture, with stalls of up to a second), the frames say nothing about the steady walk: judged on
+    // them, the pacer dropped to an even 30 and stayed there through the opening shot and the first
+    // ten seconds of the walk, its measurements full of the stalls, though the GPU had room for 60.
+    // So it starts judging, from scratch at the display's full rate, once the world is up and the
+    // opening shot is over (that swoop has the whole planet in view, and the last textures still
+    // going up to the GPU: judged from the moment the loader lifted, it still dropped to 30 in it).
+    let judging = false;
+    let opening = 0;
+    const onReady = () => {
+      opening = window.setTimeout(() => {
+        judging = true;
+        pacer.main.length = 0;
+        pacer.gpu.length = 0;
+        pacer.k = pacer.minK;
+        governor.fresh();
+      }, OPENING_MS);
+    };
+    window.addEventListener(SCENE_READY_EVENT, onReady, { once: true });
     let raf = 0;
     let lastTick = 0;
     let lastDraw = 0;
@@ -163,7 +211,7 @@ function Pacer({ mode }: { mode: PaceMode }) {
       }
       if (now - lastDraw < k * v - v / 2) return;
       keep(journey.frameMs, now - lastDraw, 240);
-      if (pacer.mode === "auto") governor.frame(now, Math.round((now - lastDraw) / v) > k, v);
+      if (pacer.mode === "auto" && judging) governor.frame(now, Math.round((now - lastDraw) / v) > k, v);
       lastDraw = now;
       started = performance.now();
       let q: WebGLQuery | null = null;
@@ -193,6 +241,8 @@ function Pacer({ mode }: { mode: PaceMode }) {
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener(SCENE_READY_EVENT, onReady);
+      window.clearTimeout(opening);
       channel.port1.close();
       queries.forEach((x) => ctx.deleteQuery(x));
       setFrameloop("always");
@@ -219,8 +269,15 @@ export default function Scene() {
     // (a phone's screen has few CSS pixels: drawn sharper it still costs about what a laptop's does)
     const phone = window.matchMedia("(pointer: coarse)").matches && window.innerWidth * window.innerHeight < 520_000;
     // (phones are 2-3x screens: at 1x the drawings' thin ink lines came out blocky, stretched to the
-    // glass; 1.5x keeps them clean, and the governor below steps it down if the phone can't keep up)
-    const screen = q.tier === "high" ? Math.min(window.devicePixelRatio, q.dpr) : phone ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 1) * q.dpr;
+    // glass. 2x keeps them crisp, and the governor (AutoQuality) steps it down if the phone can't keep
+    // up, but no further than 1.25x: let down to its usual floor, a phone that could only hold 40 fps
+    // ended up drawing at a quarter of its screen's pixels across, the people and trees in blocks.
+    // A steady lower frame rate reads better than that.)
+    // (a laptop's integrated graphics: its screen's own resolution, up to 1.5x on a high-density one)
+    // (a graphics card: 1.5x whatever the screen, so on an ordinary 1x screen it draws more pixels
+    // than it shows and every edge comes out smoothed in the scale down)
+    const screen = q.tier === "high" ? q.dpr : phone ? Math.min(window.devicePixelRatio, 2) : Math.min(window.devicePixelRatio, 1.5) * q.dpr;
+    liveQuality.floor = phone ? Math.min(screen, 1.25) : Math.min(screen, 0.75);
     liveQuality.set({
       dpr: screen * (perf("lowres") ? 0.75 : 1),
       shadow: perf("noshadow") ? 0 : q.shadow,
@@ -276,7 +333,8 @@ export default function Scene() {
       <EffectComposer multisampling={0} frameBufferType={THREE.UnsignedByteType}>
         {/* Line weight in rendered pixels: thinner when the internal resolution is lower, so the
             lines keep their on-screen weight after the upscale. */}
-        {ink ? <Ink thickness={dpr > 1.2 ? 1.7 : dpr < 0.9 ? 1.05 : 1.3} /> : <></>}
+        {/* (past 1.5x, a phone's, thicker in step: the same weight on screen as at 1.5x) */}
+        {ink ? <Ink thickness={dpr > 1.5 ? (1.7 * dpr) / 1.5 : dpr > 1.2 ? 1.7 : dpr < 0.9 ? 1.05 : 1.3} /> : <></>}
         <Vignette offset={0.45} darkness={0.15} />
         <Noise opacity={0.018} premultiply />
         {/* Smooths the stair-steps on moving edges and ink lines. FXAA is one pass (SMAA is three and

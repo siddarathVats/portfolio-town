@@ -139,8 +139,9 @@ export function startScroll(): () => void {
   journey.target = master.progress;
   journey.current = master.progress;
 
-  // ?debug exposes the journey state so tests can jump the camera without waiting for damping.
-  if (location.search.includes("debug")) Object.assign(window, { __journey: journey, __ST: ScrollTrigger });
+  // ?debug exposes the journey state so tests can jump the camera without waiting for damping (and
+  // ?fps, to measure the walk's smoothness as it really runs).
+  if (/[?&](debug|fps)/.test(location.search)) Object.assign(window, { __journey: journey, __ST: ScrollTrigger });
 
   const fine = window.matchMedia("(pointer: fine)").matches;
   const onMove = (e: PointerEvent) => {

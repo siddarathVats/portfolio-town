@@ -133,6 +133,11 @@ export const Ink = forwardRef<InkEffect, { thickness?: number }>(function Ink({ 
 export function InkFXAA() {
   const effect = useMemo(() => {
     const e = new FXAAEffect();
+    // (NVIDIA's high-quality settings: it finds the fainter stair-steps too, as on a road's painted
+    // edge seen at a low angle, which the defaults (0.125, 0.75) left jagged, and blends each step
+    // fully across. A fraction of a millisecond more.)
+    e.maxEdgeThreshold = 0.063;
+    e.subpixelQuality = 1;
     (e as unknown as { setAttributes(a: number): void }).setAttributes(EffectAttribute.CONVOLUTION);
     return e;
   }, []);

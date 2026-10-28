@@ -217,7 +217,7 @@ main { position: relative; z-index: 2; }
 .edu__deg { display: block; font-weight: 600; font-size: 15px; }
 .edu__meta { display: block; font-size: 13px; color: var(--ink-soft); }
 /* A project told in its job's details: set in from the job's own points by its colour's rule. */
-.work { margin: 0 0 18px; padding: 2px 0 2px 16px; border-left: 3px solid color-mix(in srgb, var(--accent) 70%, var(--line)); }
+.work { margin: 0 0 18px; padding: 2px 0 2px 16px; border-left: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
 .work__title { margin: 2px 0 6px; font-size: 17px; font-weight: 700; line-height: 1.25; }
 .work .body { margin: 0 0 10px; }
 .work .ticks, .work .chips { margin-bottom: 10px; }
@@ -718,6 +718,9 @@ html:not(.js) .party { display: none; }
    re-renders over the moving scene every frame; a more opaque fill keeps the text as readable. */
 :root.gpu-lite { --material-thick: none; --material-thin: none; --glass: rgba(255, 255, 255, 0.8); --material-fill: rgba(248, 251, 250, 0.88); }
 :root.gpu-lite .dialog::backdrop { backdrop-filter: none; }
+/* (with a details view open, the speech bubbles and the phone's stop label stand back: without the
+   blur on the lighter graphics, they read through the view's glass, over its title) */
+:root:has(.dialog[open]) .label, :root:has(.dialog[open]) .stepper { visibility: hidden; }
 
 .fps { position: fixed; left: 64px; bottom: 28px; z-index: 60; padding: 4px 9px; border-radius: 6px; background: rgba(23, 50, 58, 0.85); color: #e9fbff; font: 12px/1.4 var(--mono); }
 .fps__row { display: flex; gap: 4px; align-items: center; margin-top: 4px; }
@@ -1261,14 +1264,13 @@ body { font-family: var(--body); -webkit-font-smoothing: antialiased; -moz-osx-f
 /* A row of buttons (a card's, the contact's) one height, the yellow one beside the glass ones: the
    yellow had more padding and a larger type, and stood taller than its neighbours. */
 .card-actions, .gate-actions { align-items: center; }
-.card-actions .btn, .gate-actions .btn { min-height: 44px; padding: 0 22px; justify-content: center; }
+/* (each label on one line: a link's address and its arrow wrapped onto two in a half-width button on
+   a phone, the arrow left under it. Kept whole, a long one takes the room it needs from its
+   neighbour, and a row with no room left wraps.) */
+.card-actions .btn, .gate-actions .btn { min-height: 44px; padding: 0 22px; justify-content: center; white-space: nowrap; }
 .card-actions .btn.btn--bright, .gate-actions .btn.btn--bright { font-size: 13.5px; }
-/* Contact: "Email" (it copies the address) and LinkedIn side by side, and the address on a line of its
-   own under both, to read or select. (Under the Email button alone, it made that button's column as
-   wide as itself, and LinkedIn stood off on its own a long way to the right.) */
+/* Contact: "Email" (it copies the address), LinkedIn and GitHub side by side, one row. */
 .email { display: contents; }
-.email__addr { order: 1; flex: 1 1 100%; margin-top: 2px; font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.02em; color: #fff; user-select: all; text-shadow: 0 1px 2px rgba(8, 26, 32, 0.85), 0 0 10px rgba(8, 26, 32, 0.5); }
 @media (max-width: 760px) {
-  .card-actions .btn, .gate-actions .btn, .gate-actions .btn--bright { flex: 1 1 0; min-height: 48px; }
-  .email__addr { text-align: center; }
+  .card-actions .btn, .gate-actions .btn, .gate-actions .btn--bright { flex: 1 1 0; min-height: 48px; padding: 0 16px; }
 }
