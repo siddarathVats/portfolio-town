@@ -238,18 +238,6 @@ main { position: relative; z-index: 2; }
   background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); color: var(--ink);
 }
 
-/* ---------- buttons ---------- */
-.cta {
-  display: inline-flex; align-items: center; gap: 12px; padding: 15px 26px; border-radius: 999px;
-  font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.2em; text-transform: uppercase;
-  background: rgba(200, 248, 255, 0.08); border: 1px solid rgba(200, 248, 255, 0.45);
-  box-shadow: 0 0 30px -6px rgba(127, 233, 255, 0.55), inset 0 0 20px -8px rgba(127, 233, 255, 0.6);
-  transition: background 0.4s, box-shadow 0.4s, transform 0.4s var(--ease-out);
-}
-.cta:hover { background: rgba(200, 248, 255, 0.16); box-shadow: 0 0 46px -4px rgba(127, 233, 255, 0.8); transform: translateY(-2px); }
-.cta span { display: inline-block; animation: bob 2.4s ease-in-out infinite; }
-@keyframes bob { 50% { transform: translateY(4px); } }
-
 .card-actions, .gate-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .gate-actions { margin: 8px 0 26px; }
 .btn {
@@ -279,8 +267,8 @@ main { position: relative; z-index: 2; }
 @keyframes rise { from { opacity: 0; transform: translateY(18px) scale(0.96); } }
 
 /* ---------- press feedback: on pointer-down, instant ---------- */
-.cta, .btn, .auto, .sound, .menu-toggle, .dialog__close, .loop { -webkit-tap-highlight-color: transparent; }
-.cta:active, .btn:active, .auto:active, .sound:active, .menu-toggle:active, .dialog__close:active { transform: scale(0.97); transition: transform 100ms ease-out; }
+.btn, .auto, .sound, .menu-toggle, .dialog__close, .loop { -webkit-tap-highlight-color: transparent; }
+.btn:active, .auto:active, .sound:active, .menu-toggle:active, .dialog__close:active { transform: scale(0.97); transition: transform 100ms ease-out; }
 
 /* ---------- materials: honour transparency and contrast settings ---------- */
 @media (prefers-reduced-transparency: reduce) {
@@ -319,7 +307,6 @@ html:not(.js) .panel--side, html:not(.js) .panel--card { width: auto; margin-bot
   .hero-tagline { display: none; }
   .hero-actions { margin-top: 22px; flex-wrap: nowrap; }
   .sound--hero { padding: 12px 14px; }
-  .sound--hero .sound__label { display: none; }
   .auto { padding: 8px 11px; }
   .auto__label { display: none; }
   .hint { display: none; }
@@ -347,7 +334,7 @@ html:not(.js) .panel--side, html:not(.js) .panel--card { width: auto; margin-bot
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cta span, .loader__bar i { animation: none; }
+  .loader__bar i { animation: none; }
   .dialog[open] { animation: none; }
 }
 
@@ -397,7 +384,7 @@ html, body { background: var(--sky); color-scheme: light; }
 .whisper { font-style: normal; font-weight: 400; }
 .h2--center { font-weight: 400; }
 .h2--gate { font-style: normal; font-weight: 400; color: #fff; }
-.eyebrow, .hint, .hero-title, .kicker, .skills__label, .chips li, .btn, .cta, .auto, .sound, .nav a, .menu-toggle, .loop, .mark__name, .loader__text {
+.eyebrow, .hint, .hero-title, .kicker, .skills__label, .chips li, .btn, .auto, .sound, .nav a, .menu-toggle, .loop, .mark__name, .loader__text {
   font-family: var(--mono); letter-spacing: 0.08em;
 }
 .eyebrow { font-size: 13px; }
@@ -445,16 +432,6 @@ html, body { background: var(--sky); color-scheme: light; }
 .dialog__close { border: 2px solid var(--line); color: var(--line); background: #fff; }
 .dialog__close:hover { background: var(--coin); }
 .dialog::backdrop { background: rgba(23, 50, 58, 0.35); backdrop-filter: blur(8px); }
-
-/* Start button: a chunky yellow game button */
-.cta {
-  background: var(--coin); color: var(--line); border: 2px solid var(--line);
-  box-shadow: 0 4px 0 var(--line); font-size: 14px; letter-spacing: 0.12em;
-}
-.cta:hover { background: #ffe07a; box-shadow: 0 6px 0 var(--line); transform: translateY(-2px); }
-.cta:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
-.cta span { animation: blink 1.1s steps(2) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
 
 /* Header pills: light glass */
 .auto, .sound, .menu-toggle {
@@ -546,7 +523,6 @@ html, body { background: var(--sky); color-scheme: light; }
   .panel--side, .panel--card, .dialog__inner { background: #fff; box-shadow: inset 0 0 0 2px var(--line); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cta span { animation: none; }
   .travel { transition: none; }
 }
 
@@ -904,7 +880,6 @@ html:not(.js) .party { display: none; }
   .hero-title { margin: 12px 0 6px; font-size: 12px; }
   .hero-tagline { display: block; font-size: 16px; line-height: 1.45; margin: 0 0 18px; max-width: 34ch; color: #f4fbfa; text-shadow: 0 1px 10px rgba(10, 30, 36, 0.6); }
   .hero-actions { margin-top: 0; }
-  .hero-actions .cta { flex: 1; justify-content: center; min-height: 52px; font-size: 15px; }
   .sound--hero { display: none; }
 
   /* Cards: a sheet of frosted glass along the bottom, short enough to leave the street in view: the
@@ -995,7 +970,6 @@ html:not(.js) .party { display: none; }
   .auto__label { display: none; }
   .auto__short { display: inline; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
   .auto { display: inline-flex; gap: 8px; padding: 0 14px 0 12px; }
-  .hero-actions .cta { font-size: 16px; min-height: 52px; }
   .loop { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
   .h2--gate { font-size: 34px; line-height: 1.05; }
 }
@@ -1063,7 +1037,7 @@ body { font-family: var(--body); -webkit-font-smoothing: antialiased; -moz-osx-f
 .mark__name { font-weight: 600; letter-spacing: 0.1em; }
 .chips li { font-weight: 500; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
 /* Controls speak in sentence case, like a system's buttons. */
-.auto, .sound, .menu-toggle, .nav a, .btn, .cta, .loop, .auto__short {
+.auto, .sound, .menu-toggle, .nav a, .btn, .loop, .auto__short {
   font-family: var(--body); font-weight: 600; letter-spacing: -0.005em; text-transform: none;
 }
 .nav a { font-weight: 500; }
@@ -1134,15 +1108,14 @@ body { font-family: var(--body); -webkit-font-smoothing: antialiased; -moz-osx-f
 
 /* Buttons: capsules. The main action filled (the coin yellow), the rest glass. (.btn.btn--bright: the
    plain capsule's rule below comes later and would otherwise turn the bright ones white.) */
-.cta, .btn.btn--bright {
+.btn.btn--bright {
   border: 0; border-radius: 999px; color: #2a2100;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 55%), var(--coin);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.9), inset 0 -1px 1px rgba(120, 90, 0, 0.25), 0 2px 4px rgba(10, 30, 36, 0.12), 0 14px 28px -14px rgba(120, 90, 0, 0.6);
   text-shadow: none;
 }
-.cta:hover, .btn.btn--bright:hover { background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 55%), #ffdb5c; transform: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.9), inset 0 -1px 1px rgba(120, 90, 0, 0.25), 0 2px 4px rgba(10, 30, 36, 0.12), 0 18px 32px -14px rgba(120, 90, 0, 0.6); }
-.cta:active, .btn.btn--bright:active { transform: scale(0.97); }
-.cta span { animation: none; }
+.btn.btn--bright:hover { background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 55%), #ffdb5c; transform: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.9), inset 0 -1px 1px rgba(120, 90, 0, 0.25), 0 2px 4px rgba(10, 30, 36, 0.12), 0 18px 32px -14px rgba(120, 90, 0, 0.6); }
+.btn.btn--bright:active { transform: scale(0.97); }
 .btn, .btn--ghost, .dialog__close {
   border: 0; border-radius: 999px; color: #0f2930; text-shadow: none;
   /* (near solid: see-through, it went a dull grey with dull ink on the dark glass at night) */

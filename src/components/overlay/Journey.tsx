@@ -54,16 +54,8 @@ function TripBar() {
   );
 }
 
-/**
- * "Start the walk": the walk has usually set off by itself already, behind the name and intro, so
- * pressed then it skips the intro and goes on to About (a press that changed nothing on screen was
- * pressed again and again, on phones above all); paused, it plays.
- */
+/** The About stop (BLOCKS index). */
 const ABOUT = BLOCKS.findIndex((b) => b.id === "origins");
-function startWalk() {
-  if (autopilot.state !== "playing") return autopilot.go();
-  if (journey.target < stopProgress[ABOUT] - 0.01) scrollToProgress(stopProgress[ABOUT], "About me");
-}
 
 /** The stops a phone steps between (BLOCKS indices). */
 const STEPS = BLOCKS.map((_, i) => i);
@@ -227,9 +219,6 @@ export default function Journey() {
             <p className="hero-title">{person.title}</p>
             <p className="hero-tagline">{person.tagline}</p>
             <div className="hero-actions">
-              <button className="cta" onClick={startWalk}>
-                Start the walk <span aria-hidden="true">▶</span>
-              </button>
               <SoundToggle variant="hero" />
             </div>
             <WeatherToggle />
