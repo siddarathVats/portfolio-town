@@ -12,6 +12,8 @@ import { weather } from "./weather";
  * public/audio/CREDITS.txt.
  */
 type Mood = "clear" | "rain" | "snow" | "night";
+/** A quarter second of silence (see enable). */
+const HUSH = "/audio/hush.wav";
 const TRACKS: { src: string; moods: Mood[] }[] = [
   { src: "/audio/sleepy-cat.mp3", moods: ["clear", "night"] },
   { src: "/audio/sweet-september.mp3", moods: ["clear"] },
@@ -43,17 +45,6 @@ const XFADE = 6;
 /** A change of weather has to last this long (s), and the track have played this long, to change track for it. */
 const MOOD_HOLD = 14;
 const MIN_PLAY = 35;
-// (renamed when the music became on by default, so an "off" kept from before, when it had to be
-// turned on, doesn't keep it off; and again when it began trying to start as the page opens)
-const PREF_KEY = "walk:music:v2";
-
-const readPref = () => {
-  try {
-    return localStorage.getItem(PREF_KEY);
-  } catch {
-    return null;
-  }
-};
 const readRecent = (): number[] => {
   try {
     const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
@@ -69,14 +60,6 @@ const writeRecent = (v: number[]) => {
     /* private mode: just not remembered */
   }
 };
-const writePref = (v: "on" | "off") => {
-  try {
-    localStorage.setItem(PREF_KEY, v);
-  } catch {
-    /* private mode: preference just isn't remembered */
-  }
-};
-
 /** The mood the weather and the hour call for now. */
 function moodNow(): Mood {
   if (weather.snow > 0.5) return "snow";
@@ -117,6 +100,8 @@ class Sound {
   on = false;
   /** Lowered while a project dialog is open. */
   duck = false;
+  /** Whether the second player has been let start (see enable). */
+  private otherUnlocked = false;
   /** Stops waiting for the first gesture to start the music (see resumeFromPreference). */
   private disarm?: () => void;
 
@@ -134,6 +119,10 @@ class Sound {
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     // ("playback": bigger buffers than the default, made for a game's input. With the street drawing
     // every frame, the small ones ran dry on phones now and then and the music crackled.)
+    // (on an iPhone, sound through the audio context is silenced by the ring/silent switch, as a game's
+    // is, unless the page says it is playing music: Safari 17 on)
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = "playback";
     this.ctx = new AC({ latencyHint: "playback" });
     const ctx = this.ctx;
     this.filter = ctx.createBiquadFilter();
@@ -314,15 +303,12 @@ class Sound {
       void this.ctx.resume();
       return this.deck.el.play();
     };
+    const EVENTS = ["pointerup", "keydown"] as const;
     const retry = () => {
-      window.removeEventListener("pointerdown", retry);
-      window.removeEventListener("keydown", retry);
+      EVENTS.forEach((t) => window.removeEventListener(t, retry));
       void go()?.catch(() => {});
     };
-    go()?.catch(() => {
-      window.addEventListener("pointerdown", retry, { once: true });
-      window.addEventListener("keydown", retry, { once: true });
-    });
+    go()?.catch(() => EVENTS.forEach((t) => window.addEventListener(t, retry, { once: true })));
   }
 
   async enable() {
@@ -332,7 +318,6 @@ class Sound {
     window.clearTimeout(this.pauseTimer);
     this.on = true;
     this.emit();
-    writePref("on");
     // Everything that starts a player happens here, before anything is waited on: iOS lets a player
     // start only inside the tap itself. (Waiting on the audio context first, the second deck was never
     // let start, so the music stopped when the first track ended.)
@@ -346,13 +331,19 @@ class Sound {
       started = this.play(this.pick(this.mood));
     } else started = this.deck.el.play();
     // (the other deck, started silently and stopped, so it may start later on its own)
+    // (until it has: a first tap that was refused left it set up but never started)
+    // (on a quarter second of silence: started on a second track, that was fetched too as the page
+    // opened, 2 MB more for a phone to load before the music could start)
     const other = this.idle.el;
-    if (!other.src) {
+    if (!this.otherUnlocked) {
       other.muted = true;
-      other.src = TRACKS[this.deck.track === 0 ? 1 : 0].src;
+      if (!other.src) other.src = HUSH;
       void other
         .play()
-        .then(() => other.pause())
+        .then(() => {
+          other.pause();
+          this.otherUnlocked = true;
+        })
         .catch(() => {})
         .finally(() => (other.muted = false));
     }
@@ -378,7 +369,6 @@ class Sound {
     this.disarm?.();
     this.on = false;
     this.emit();
-    writePref("off");
     const { ctx, gain } = this;
     if (!ctx || !gain) return;
     gain.gain.cancelScheduledValues(ctx.currentTime);
@@ -402,20 +392,23 @@ class Sound {
   }
 
   /**
-   * Music is on unless the visitor turned it off before. It is tried as the page opens (a browser
+   * Music is on at the start of every visit (switched off, it stays off only for that visit: not
+   * remembered for the next). It is tried as the page opens (a browser
    * lets it play then only for a site the visitor has been using: otherwise it is refused, quietly),
    * and else starts on their first gesture. It keeps listening until the music actually plays: on a
    * phone a finger going down doesn't count yet, only lifting it (a scroll's swipe doesn't count at
    * all, nor does a mouse wheel). (Not tried on its own in a test, ?debug, which stubs it out after.)
    */
   resumeFromPreference() {
-    if (readPref() === "off") return () => {};
     if (!location.search.includes("debug")) void this.enable();
-    const EVENTS = ["pointerdown", "pointerup", "touchend", "keydown"] as const;
+    const EVENTS = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
     const go = (e: Event) => {
       // (a tap on the music switch itself is left to the switch: started here and then toggled by its
       // own click, the music stopped as it began)
       if ((e.target as Element | null)?.closest?.(".sound")) return;
+      // (a finger coming down doesn't let a phone start sound, only lifting it: tried then, the start
+      // was refused, and the try as it lifted came while that one was still failing)
+      if (e.type === "pointerdown" && (e as PointerEvent).pointerType !== "mouse") return;
       if (!this.on) void this.enable();
     };
     const off = () => {

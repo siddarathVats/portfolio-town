@@ -27,9 +27,40 @@ function labelOf(el: Element) {
   return `${area}: ${text || el.tagName.toLowerCase()}`.slice(0, 60);
 }
 
+const testing = () => /[?&](debug|vclock)/.test(location.search);
+/** This visit's id (its reports are added up under it). */
+let sid = "";
+const sidOf = () => (sid ||= (crypto.randomUUID?.() ?? `${Math.random()}${Date.now()}`).replace(/[^A-Za-z0-9]/g, "").slice(0, 24));
+
+/** The most errors a visit reports (one going wrong every frame must not send a report every frame). */
+const MAX_ERRORS = 3;
+let errors = 0;
+
+/**
+ * Something went wrong on the visitor's screen: reported at once (the page may be about to fall over,
+ * stopping the regular reports), so a crash on a phone shows in the stats with what it was.
+ */
+export function reportError(what: string, e: unknown) {
+  const err = e as Error | undefined;
+  const msg = `${what}: ${err?.name ?? ""} ${err?.message ?? String(e)}`.replace(/\s+/g, " ").slice(0, 300);
+  if (testing()) return void console.warn("[stats] error", msg);
+  if (++errors > MAX_ERRORS) return;
+  const body = JSON.stringify({ sid: sidOf(), error: msg });
+  if (!navigator.sendBeacon?.("/api/stats", body)) void fetch("/api/stats", { method: "POST", body, keepalive: true }).catch(() => {});
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("error", (e) => {
+    // (a script from another site, as an extension's, says only "Script error." and isn't ours)
+    if (!e.message || e.message === "Script error.") return;
+    reportError("page", e.error ?? e.message);
+  });
+  window.addEventListener("unhandledrejection", (e) => reportError("promise", e.reason));
+}
+
 export function startStats(): () => void {
-  if (/[?&](debug|vclock)/.test(location.search)) return () => {};
-  const sid = (crypto.randomUUID?.() ?? `${Math.random()}${Date.now()}`).replace(/[^A-Za-z0-9]/g, "").slice(0, 24);
+  if (testing()) return () => {};
+  const sid = sidOf();
   let started = false;
   let ms = 0;
   let stops: Record<string, number> = {};

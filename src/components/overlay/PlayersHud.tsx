@@ -10,6 +10,7 @@ export function PlayersHud() {
   const st = useSyncExternalStore(players.subscribe, players.getState, () => serverState);
   const [toasts, setToasts] = useState<EmoteEvent[]>([]);
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => players.connect(), []);
   useEffect(() => {
@@ -29,6 +30,26 @@ export function PlayersHud() {
       timers.forEach((id) => window.clearTimeout(id));
     };
   }, []);
+
+  /** The site's address to someone else: the phone's own share sheet where there is one, else copied. */
+  const invite = async () => {
+    const url = `${location.origin}/`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: document.title, text: "Walk through this little town with me", url });
+      } catch {
+        // (closed without sharing)
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
+  };
 
   const me = st.me;
   if (!me) return null;
@@ -73,7 +94,13 @@ export function PlayersHud() {
             </li>
           ))}
           {others.length > 6 && <li className="party__more">+{others.length - 6} more</li>}
-          {others.length === 0 && <li className="party__more">Share the link to play together</li>}
+          {others.length === 0 && (
+            <li>
+              <button className="party__invite" onClick={() => void invite()}>
+                {copied ? "Link copied ✓ send it to a friend" : "Share the link to play together ↗"}
+              </button>
+            </li>
+          )}
         </ul>
       </div>
 

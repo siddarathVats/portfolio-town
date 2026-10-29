@@ -69,3 +69,11 @@ for (const sid of recent as string[]) {
       (clicked.length ? `\n      clicked: ${clicked.join("; ")}` : ""),
   );
 }
+
+const errors = await db.lrange<{ at: number; sid: string; error: string; ua: string } | string>("stats:errors", 0, 19);
+console.log(`\nErrors visitors met (latest ${errors.length})`);
+for (const raw of errors) {
+  const e = typeof raw === "string" ? JSON.parse(raw) : raw;
+  const s = await db.hgetall<Record<string, string>>(`stats:session:${e.sid}`);
+  console.log(`  ${new Date(e.at).toISOString().slice(0, 16).replace("T", " ")}  ${s ? `${s.city}, ${s.country} · ${s.device}` : "?"}\n      ${e.error}\n      ${e.ua}`);
+}

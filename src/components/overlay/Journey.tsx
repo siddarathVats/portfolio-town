@@ -18,14 +18,24 @@ import { Checklist } from "./Checklist";
 import { FpsMeter } from "./FpsMeter";
 import { DetailsDialog } from "./DetailsDialog";
 import { Loader } from "./Loader";
+import { SceneGuard } from "./SceneGuard";
 import { SoundToggle } from "./SoundToggle";
 import { WeatherToggle } from "./WeatherToggle";
 import { EmailButton } from "./EmailButton";
 import { sound } from "@/lib/audio";
+import { isStale, reloadFresh } from "@/lib/stale";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
-const Scene = dynamic(() => import("@/components/three/Scene"), { ssr: false });
+// (its files gone after a deploy, to a page opened before it: the page loads afresh, as the new version)
+const Scene = dynamic(
+  () =>
+    import("@/components/three/Scene").catch((e: unknown) => {
+      if (isStale(e) && reloadFresh()) return new Promise<never>(() => {});
+      throw e;
+    }),
+  { ssr: false },
+);
 
 /** How much of the inventory its card shows: the first few groups, the main few of each (the whole
  *  of it is in its details). */
@@ -194,7 +204,9 @@ export default function Journey() {
         Skip to experience
       </a>
       <div className="canvas-layer" aria-hidden="true">
-        <Scene />
+        <SceneGuard>
+          <Scene />
+        </SceneGuard>
       </div>
       <Loader />
       <Header />

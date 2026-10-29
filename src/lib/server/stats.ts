@@ -10,7 +10,8 @@ import { Redis } from "@upstash/redis";
  *   visits (hash day → visits), uniq:<day> and uniq:all (HyperLogLog of visitors), time_ms (hash
  *   day → ms on the page), stop_ms (hash stop → ms), click (hash label → clicks), country, city,
  *   referrer, device (hash → visits), session:<id> (hash: start, country, city, device, referrer,
- *   visitor, ms; kept 30 days) and sessions (list of the latest session ids).
+ *   visitor, ms; kept 30 days), sessions (list of the latest session ids) and errors (list of the
+ *   latest errors visitors met, as JSON: at, sid, error, user agent).
  */
 
 let redis: Redis | null = null;

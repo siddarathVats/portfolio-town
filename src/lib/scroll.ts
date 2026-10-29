@@ -77,11 +77,30 @@ function keepRootClassesStill(l: Lenis) {
 
 /**
  * The walk goes into the picture, up the screen, so pushing "up" walks on: the arrow and page keys and
- * the wheel are turned round from a page's (a page scrolls on with "down"), so that Up walks forward
- * and Down walks back. A touch swipe keeps a page's way round (the finger drags the world toward you),
- * as does Space (on, as everywhere). Scrolling the text in a card keeps its own way too.
+ * a mouse's wheel are turned round from a page's (a page scrolls on with "down"), so that Up walks
+ * forward and Down walks back. A touch swipe keeps a page's way round (the finger drags the world
+ * toward you), as does a laptop's touchpad, swiped like a phone (see onPad), and Space (on, as
+ * everywhere). Scrolling the text in a card keeps its own way too.
  */
 const KEY_WAY: Record<string, number> = { ArrowUp: 1, ArrowDown: -1, PageUp: 1, PageDown: -1 };
+/**
+ * Is this wheel event from a touchpad rather than a mouse's wheel? A wheel turns in notches, which
+ * Chrome and Safari report as multiples of 120 (wheelDeltaY), and Firefox in lines; a touchpad moves
+ * by the pixel. A swipe is a stream of events, decided as a whole: one that looks like a touchpad
+ * makes the rest of the swipe (till it has been still for a moment) count as one too. (Swiped "up"
+ * the way a phone is, a touchpad walked back, turned round with the wheel: from the start, where
+ * there is no back, it did nothing but stop the walk.)
+ */
+const PAD_HOLD_MS = 400;
+let padUntil = -1;
+function onPad(e: WheelEvent) {
+  const w = e as WheelEvent & { wheelDeltaX?: number; wheelDeltaY?: number };
+  const looks = e.deltaMode === 0 && (w.wheelDeltaY === undefined || w.wheelDeltaY % 120 !== 0 || (w.wheelDeltaX ?? 0) % 120 !== 0);
+  const pad = looks || e.timeStamp < padUntil;
+  padUntil = pad ? e.timeStamp + PAD_HOLD_MS : -1;
+  return pad;
+}
+
 /** How far an arrow press goes (px); a page key goes most of a screen. */
 const ARROW_STEP = 140;
 
@@ -92,8 +111,15 @@ export function startScroll(): () => void {
 
   let raf: ((time: number) => void) | null = null;
   if (!reduce) {
-    // (wheelMultiplier -1: the wheel turned round, see KEY_WAY)
-    lenis = new Lenis({ lerp: 0.085, smoothWheel: true, syncTouch: false, wheelMultiplier: -1, prevent: scrollsInCard });
+    // (a mouse's wheel turned round, see KEY_WAY: Lenis reads the deltas back after virtualScroll)
+    const turn = (data: { deltaX: number; deltaY: number; event: WheelEvent | TouchEvent }) => {
+      if (data.event.type === "wheel" && !onPad(data.event as WheelEvent)) {
+        data.deltaX = -data.deltaX;
+        data.deltaY = -data.deltaY;
+      }
+      return true;
+    };
+    lenis = new Lenis({ lerp: 0.085, smoothWheel: true, syncTouch: false, prevent: scrollsInCard, virtualScroll: turn });
     keepRootClassesStill(lenis);
     lenis.on("scroll", ScrollTrigger.update);
     raf = (time: number) => lenis?.raf(time * 1000);
@@ -121,9 +147,9 @@ export function startScroll(): () => void {
     else window.scrollTo(0, keyTo);
   };
   window.addEventListener("keydown", onKey);
-  // (without the smooth scrolling, for reduced motion, the wheel is turned round here)
+  // (without the smooth scrolling, for reduced motion, a mouse's wheel is turned round here)
   const onWheel = (e: WheelEvent) => {
-    if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || scrollsInCard(e.target as Element)) return;
+    if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || scrollsInCard(e.target as Element) || onPad(e)) return;
     e.preventDefault();
     window.scrollBy(0, -e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? window.innerHeight : 1));
   };
