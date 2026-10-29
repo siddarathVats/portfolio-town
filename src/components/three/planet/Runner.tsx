@@ -33,7 +33,7 @@ const CRANE_FALL = 6;
 const INTRO = 3.4;
 /** How long the courier must keep going the other way before the camera swings round behind them (s). */
 const SIDE_HOLD = 0.5;
-import { COURIER_SCALE, Courier, sunlight } from "./sprite";
+import { COURIER_SCALE, Courier, loadRainArt, rainArtReady, sunlight } from "./sprite";
 
 /** How long the courier waves on stopping beside someone (s), before standing turned to them. */
 const GREET_WAVE = 2.2;
@@ -270,7 +270,10 @@ export function Runner({ shadows: mapSize }: { shadows: number }) {
     // (rolling some 3 degrees each way with his stride, a beat behind it, as a carried thing does)
     // (kept upright as they lean into a bend, as you hold one over your head: the card faces back
     // toward the camera, so their lean shows on it the other way round)
-    umbrella.update(dt, weather.rain > 0.3, 0.06 * Math.sin(2 * Math.PI * (walker.phase - 0.18)) * Math.min(1, journey.speed) + r.bank * 0.85);
+    // (the rain's drawings are sent for as a shower comes on: in the story's weather the next is
+    // counted down, so a little ahead of it; under the live sky, as soon as it is raining there)
+    if (weather.raining ? weather.kind === "rain" : weather.left < 20 && !weather.wasLive) loadRainArt();
+    umbrella.update(dt, weather.rain > 0.3 && rainArtReady(), 0.06 * Math.sin(2 * Math.PI * (walker.phase - 0.18)) * Math.min(1, journey.speed) + r.bank * 0.85);
     // (the raised fist only while it is in hand: coming out from behind the back, or put away there,
     // it is in the other, swinging hand's reach)
     walker.holdUmbrella(umbrella.amount > 0.1);

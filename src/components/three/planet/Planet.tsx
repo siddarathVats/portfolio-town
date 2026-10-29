@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { use, useEffect, useMemo, useRef } from "react";
 import { sfx } from "@/lib/sfx";
 import { townsfolk } from "@/content/townsfolk";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -16,10 +16,10 @@ import { BRAKE } from "@/lib/locomotion";
 import { PLANET_RADIUS, loopDelta, routeFrame, standAt } from "@/lib/world";
 import { C, decalMaterial, groundMaterial, paintedSolid, paneMaterial, propContactMaterial, propDepthMaterial, propMaterial, roadSignMaterial, signMaterial, solid, stoneMaterial, vendingMaterial, wettable, dusted, worldMaterial } from "./style";
 import { ARCH_HALF, ARCH_RISE } from "./props";
-import { BOUQUET_MID, Townsperson, bouquetCard, pickBouquet } from "./sprite";
+import { BOUQUET_MID, Townsperson, bouquetCard, pickBouquet, rainArtReady } from "./sprite";
 import { bladeMaterial, flowerMaterial, leafDepthMaterial, leafMaterial, wind } from "./foliage";
 import { LOD_LAYER, warmUp } from "./warm";
-import { FALL_T, PAVE_HALF, ROAD_HALF, buildPlan, heightAt, kerbStrip, roadStrip, roadStretches, streamStrip, type Npc, type Pickable } from "./plan";
+import { FALL_T, PAVE_HALF, ROAD_HALF, heightAt, inSlices, planInSlices, type TownPlan, kerbStrip, roadStrip, roadStretches, streamStrip, type Npc, type Pickable } from "./plan";
 import { Waterfall, streamMaterial } from "./Water";
 import { Life } from "./Life";
 import { Umbrella } from "./umbrella";
@@ -31,8 +31,9 @@ import { Footprints } from "./Footprints";
 import { LABELS_LAST, Label, keepOnScreen } from "./label";
 
 
-/** The ground: grass over rolling hills, a little darker on the slopes and in patches. */
-function groundGeometry() {
+/** The ground: grass over rolling hills, a little darker on the slopes and in patches. (In steps, a
+ *  `yield` every few thousand corners: see inSlices.) */
+function* groundSteps() {
   const g = new THREE.IcosahedronGeometry(PLANET_RADIUS, 42);
   const pos = g.getAttribute("position");
   // Each corner is shared by several triangles: work its height out once.
@@ -43,6 +44,7 @@ function groundGeometry() {
   const c = new THREE.Color();
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
+    if (i % 4096 === 0) yield;
     v.fromBufferAttribute(pos, i);
     const key = `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
     let h = seen.get(key);
@@ -55,6 +57,7 @@ function groundGeometry() {
     col.set([c.r, c.g, c.b], i * 3);
   }
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  yield;
   g.computeVertexNormals();
   return g;
 }
@@ -406,7 +409,7 @@ function Npcs({ npcs, garden, pickables }: { npcs: Npc[]; garden: { s: number; s
       // drawings change; taken out from behind her and put away there, as the courier does)
       const grip = h.m.umbrellaHand;
       shade.holdIn(h.m.holder, grip.x, grip.y, -0.04, grip.tilt, 0);
-      shade.update(dt, weather.rain > 0.3);
+      shade.update(dt, weather.rain > 0.3 && rainArtReady());
       h.m.holdUmbrella(shade.amount > 0.1);
     }
   });
@@ -652,18 +655,36 @@ function Culled({
       geos.map((g) => {
         // (drawn cards keep their centres apart from the card shape they share)
         const pos = (g.userData.points as THREE.BufferAttribute | undefined) ?? g.getAttribute("position");
-        const v = new THREE.Vector3();
-        const dir = new THREE.Vector3();
-        for (let i = 0; i < pos.count; i++) dir.add(v.fromBufferAttribute(pos, i).normalize());
-        dir.normalize();
-        // The chunk's angular size about the planet's centre and its highest point.
-        let spread = 0;
-        let top = PLANET_RADIUS;
-        for (let i = 0; i < pos.count; i++) {
-          v.fromBufferAttribute(pos, i);
-          top = Math.max(top, v.length());
-          spread = Math.max(spread, v.normalize().angleTo(dir));
+        // (read straight from the numbers, each point's length worked out once: through Vector3s and
+        // an angle per point, this took half a second of the loading on a laptop, two on a phone)
+        const n = pos.count;
+        const len = new Float32Array(n);
+        const xyz = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+          xyz[i * 3] = x;
+          xyz[i * 3 + 1] = y;
+          xyz[i * 3 + 2] = z;
+          len[i] = Math.sqrt(x * x + y * y + z * z);
         }
+        const dir = new THREE.Vector3();
+        for (let i = 0; i < n; i++) {
+          if (len[i] === 0) continue;
+          dir.x += xyz[i * 3] / len[i];
+          dir.y += xyz[i * 3 + 1] / len[i];
+          dir.z += xyz[i * 3 + 2] / len[i];
+        }
+        dir.normalize();
+        // The chunk's angular size about the planet's centre (the widest angle from its middle: the
+        // smallest cosine) and its highest point.
+        let cos = 1;
+        let top = PLANET_RADIUS;
+        for (let i = 0; i < n; i++) {
+          top = Math.max(top, len[i]);
+          const c = len[i] > 0 ? (xyz[i * 3] * dir.x + xyz[i * 3 + 1] * dir.y + xyz[i * 3 + 2] * dir.z) / len[i] : 0;
+          cos = Math.min(cos, c);
+        }
+        const spread = Math.acos(THREE.MathUtils.clamp(cos, -1, 1));
         // A sparse sample of its points, to judge how near the camera the section comes.
         const step = Math.max(1, Math.floor(pos.count / 96));
         const samples: THREE.Vector3[] = [];
@@ -743,35 +764,48 @@ function Culled({
   );
 }
 
+/** The town and the ground it stands on, worked out a slice at a time (see inSlices): the planet's
+ *  ground alone was half a second on a laptop, the page frozen through it. Once. */
+let town: Promise<{ plan: TownPlan; ground: ReturnType<typeof groundOf> }> | null = null;
+function townInSlices() {
+  town ??= planInSlices().then(async (plan) => ({ plan, ground: groundOf(plan, await inSlices(groundSteps())) }));
+  return town;
+}
+// (begun as soon as this code arrives, while the canvas is still being set up)
+if (typeof window !== "undefined") void townInSlices();
+
+/** The roads, paths and stream laid over the ground. */
+function groundOf(plan: TownPlan, sphere: THREE.BufferGeometry) {
+  const st = roadStretches();
+  const strips = (list: [number, number][], l0: number, l1: number, lift: number) => list.filter(([a, b]) => b > a).map(([a, b]) => roadStrip(a, b, l0, l1, lift));
+  return {
+    sphere,
+    pave: strips(st.paved, -PAVE_HALF, PAVE_HALF, 0.02),
+    // A strip of bare earth between the pavement and the grass.
+    verge: strips(st.paved, -PAVE_HALF - 0.9, -PAVE_HALF + 0.05, 0.012).concat(strips(st.paved, PAVE_HALF - 0.05, PAVE_HALF + 0.9, 0.012)),
+    asphalt: strips(st.paved, -ROAD_HALF, ROAD_HALF, 0.035),
+    edges: strips(st.paved, -ROAD_HALF + 0.1, -ROAD_HALF + 0.18, 0.042).concat(strips(st.paved, ROAD_HALF - 0.18, ROAD_HALF - 0.1, 0.042)),
+    kerb: mergeGeometries(plan.kerbs.map(([side, a, b]) => kerbStrip(a, b, side * (ROAD_HALF + 0.08)))),
+    dirt: strips(st.dirt, -ROAD_HALF * 0.85, ROAD_HALF * 0.85, 0.025),
+    // Dashes down the middle of the paved road.
+    dashes: mergeGeometries(
+      st.paved.flatMap(([a, b]) => {
+        const out: THREE.BufferGeometry[] = [];
+        for (let s = a + 0.4; s + 0.7 < b; s += 1.6) out.push(roadStrip(s, s + 0.7, -0.07, 0.07, 0.045, 0.35));
+        return out;
+      }),
+    ),
+    // (the sandy bed reaches on under the waterfall's pool)
+    bank: streamStrip(1.35, 0.015, -1.3, FALL_T + 0.04),
+    water: streamStrip(1.0, 0.03),
+  };
+}
+
+/** The town. It waits (suspends: see Scene) until its layout has been worked out. */
 export function Planet() {
-  const plan = useMemo(() => buildPlan(), []);
+  const { plan, ground } = use(townInSlices());
   // Everything that grows sways on the scene's clock.
   useFrame(({ clock }) => void (wind.uTime.value = clock.elapsedTime));
-  const ground = useMemo(() => {
-    const st = roadStretches();
-    const strips = (list: [number, number][], l0: number, l1: number, lift: number) => list.filter(([a, b]) => b > a).map(([a, b]) => roadStrip(a, b, l0, l1, lift));
-    return {
-      sphere: groundGeometry(),
-      pave: strips(st.paved, -PAVE_HALF, PAVE_HALF, 0.02),
-      // A strip of bare earth between the pavement and the grass.
-      verge: strips(st.paved, -PAVE_HALF - 0.9, -PAVE_HALF + 0.05, 0.012).concat(strips(st.paved, PAVE_HALF - 0.05, PAVE_HALF + 0.9, 0.012)),
-      asphalt: strips(st.paved, -ROAD_HALF, ROAD_HALF, 0.035),
-      edges: strips(st.paved, -ROAD_HALF + 0.1, -ROAD_HALF + 0.18, 0.042).concat(strips(st.paved, ROAD_HALF - 0.18, ROAD_HALF - 0.1, 0.042)),
-      kerb: mergeGeometries(plan.kerbs.map(([side, a, b]) => kerbStrip(a, b, side * (ROAD_HALF + 0.08)))),
-      dirt: strips(st.dirt, -ROAD_HALF * 0.85, ROAD_HALF * 0.85, 0.025),
-      // Dashes down the middle of the paved road.
-      dashes: mergeGeometries(
-        st.paved.flatMap(([a, b]) => {
-          const out: THREE.BufferGeometry[] = [];
-          for (let s = a + 0.4; s + 0.7 < b; s += 1.6) out.push(roadStrip(s, s + 0.7, -0.07, 0.07, 0.045, 0.35));
-          return out;
-        }),
-      ),
-      // (the sandy bed reaches on under the waterfall's pool)
-      bank: streamStrip(1.35, 0.015, -1.3, FALL_T + 0.04),
-      water: streamStrip(1.0, 0.03),
-    };
-  }, [plan]);
   const mats = useMemo(
     () => ({
       ground: groundMaterial(),

@@ -34,14 +34,24 @@ export function startStats(): () => void {
   let ms = 0;
   let stops: Record<string, number> = {};
   let clicks: Record<string, number> = {};
-  let last = performance.now();
+  // (from the moment the page was asked for: the wait while it loads is time spent on it too, and a
+  // visitor who gave up during it showed as a visit of 0 s)
+  let last = 0;
+  let begun = false;
+  /** Whether the page was in view at the last count (the time since is counted by that). */
+  let shown = document.visibilityState === "visible";
 
-  // The time in view, and where on the walk it was spent (a second at a time).
+  // The time in view, and where on the walk it was spent (a second at a time). A stretch counts if
+  // the page was in view when it began: a busy page (still setting up the town) may only get round to
+  // counting after the visitor has already switched away.
   const tick = () => {
     const now = performance.now();
-    const dt = Math.min(now - last, 5_000);
+    const dt = begun ? Math.min(now - last, 5_000) : now;
+    begun = true;
     last = now;
-    if (document.visibilityState !== "visible") return;
+    const was = shown;
+    shown = document.visibilityState === "visible";
+    if (!was) return;
     ms += dt;
     const id = BLOCKS[nearestStop(journey.current).index].id;
     stops[id] = (stops[id] ?? 0) + dt;
@@ -72,7 +82,10 @@ export function startStats(): () => void {
   };
   const onHide = () => {
     if (document.visibilityState === "hidden") send();
-    else last = performance.now();
+    else {
+      last = performance.now();
+      shown = true;
+    }
   };
   const ticker = window.setInterval(tick, 1_000);
   const first = window.setTimeout(send, FIRST_MS);

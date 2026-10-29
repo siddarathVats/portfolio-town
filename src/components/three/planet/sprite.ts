@@ -34,7 +34,22 @@ const BOUQUET_URL = "/planet/tex/bouquet.webp";
 /** Atlas cells are 192 × 320 px; figures fill 312 px of the height, feet on the cell's bottom. */
 const CELL_ASPECT = 192 / 320;
 
-const textures = new Map<string, { tex: THREE.Texture; loaded: boolean; waiting: THREE.Texture[] }>();
+type Sheet = { tex: THREE.Texture; loaded: boolean; waiting: THREE.Texture[]; fetch: () => void };
+const textures = new Map<string, Sheet>();
+/**
+ * The drawings only the rain needs (the umbrellas, and the courier's jog and actions holding one):
+ * some 3 MB, near half of all the art, so a visitor's phone doesn't wait on them to see the town.
+ * They are sent for by loadRainArt (see Runner: as a shower comes on), and nothing shows them until
+ * they are all in (rainArtReady).
+ */
+const RAIN_ONLY = /umbrella|-rain\./;
+let rainWanted = false;
+export function loadRainArt() {
+  if (rainWanted) return;
+  rainWanted = true;
+  textures.forEach((e, url) => RAIN_ONLY.test(url) && e.fetch());
+}
+export const rainArtReady = () => rainWanted && [...textures].every(([url, e]) => e.loaded || !RAIN_ONLY.test(url));
 /**
  * A copy of a sheet's texture, for one card (each shows its own cell). The copies share the image; a
  * copy asks to be uploaded once that has arrived (asking before, three warns it has no image yet).
@@ -42,12 +57,21 @@ const textures = new Map<string, { tex: THREE.Texture; loaded: boolean; waiting:
 function sheet(url: string) {
   let e = textures.get(url);
   if (!e) {
-    const entry = { tex: null as unknown as THREE.Texture, loaded: false, waiting: [] as THREE.Texture[] };
-    entry.tex = new THREE.TextureLoader().load(url, () => {
-      entry.loaded = true;
-      entry.waiting.forEach((t) => (t.needsUpdate = true));
-      entry.waiting.length = 0;
-    });
+    const entry: Sheet = { tex: new THREE.Texture(), loaded: false, waiting: [], fetch: () => {} };
+    let sent = false;
+    // (as TextureLoader does it, into a texture made ahead, so a rain drawing can be sent for later)
+    entry.fetch = () => {
+      if (sent) return;
+      sent = true;
+      new THREE.ImageLoader().load(url, (image) => {
+        entry.tex.image = image;
+        entry.tex.needsUpdate = true;
+        entry.loaded = true;
+        entry.waiting.forEach((t) => (t.needsUpdate = true));
+        entry.waiting.length = 0;
+      });
+    };
+    if (!RAIN_ONLY.test(url) || rainWanted) entry.fetch();
     entry.tex.colorSpace = THREE.SRGBColorSpace;
     entry.tex.anisotropy = 4;
     textures.set(url, (e = entry));
@@ -948,7 +972,7 @@ export class Courier extends Card {
 
   /** Run holding the umbrella up (once its drawings have loaded), or swinging both arms. */
   holdUmbrella(on: boolean) {
-    const want = on && !!this.umbrellaMap && this.umbrellaMap.version > 0;
+    const want = on && !!this.umbrellaMap && this.umbrellaMap.version > 0 && rainArtReady();
     if (want === this.holding) return;
     this.holding = want;
     const map = want ? this.umbrellaMap! : this.runMap;

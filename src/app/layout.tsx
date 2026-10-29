@@ -53,6 +53,19 @@ for(var g=0;g<50;g++){var due=tm.filter(function(e){return e.at<=t});if(!due.len
 W.dispatchEvent(new Event("scroll"));var run=q;q=[];run.forEach(function(e){try{e[1](t)}catch(x){console.error(x)}});if(after)after(k)}return t},
 get t(){return t}};})();`;
 
+/**
+ * The town's drawings and paint, sent for with the page itself (at low priority, behind the code), so
+ * they come down while the code loads and the town is built rather than after: on a phone's
+ * connection they are most of the wait. (crossOrigin as three's loaders ask for them, so the browser
+ * hands these over rather than fetching again. The rain's drawings aren't here: see sprite.ts.)
+ */
+const ART = [
+  "courier-run.webp", "courier-legs.png", "townsfolk.webp", "bouquet.webp",
+  "clip-wave.webp", "clip-greet.webp", "clip-give.webp", "clip-pick.webp",
+  "decals.webp", "windows.webp", "signs.webp", "props.webp", "vending.webp", "roadsigns.webp", "leaves.png",
+  "wall-a.jpg", "wall-b.jpg", "asphalt.jpg", "paving.jpg",
+];
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
@@ -60,6 +73,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {/* Panels become fixed, scroll-driven overlays only when JS runs; without JS they read as a normal page. */}
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
         <script dangerouslySetInnerHTML={{ __html: VCLOCK }} />
+        {ART.map((f) => (
+          <link key={f} rel="preload" as="image" href={`/planet/tex/${f}`} crossOrigin="anonymous" fetchPriority="low" />
+        ))}
       </head>
       <body>
         {children}

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Canvas, advance, useFrame, useThree } from "@react-three/fiber";
 import { EffectComposer, Noise, SMAA, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import { SCENE_READY_EVENT, journey } from "@/lib/journey";
 import { LOD_LAYER, warmUp } from "./planet/warm";
+import { inSlices } from "./planet/plan";
 import { QUALITY, detectTier, liveQuality, type Live, type Tier } from "./quality";
 import { createGovernor, keep, pacer, paceBounds, pct, type PaceMode } from "./pacer";
 import { Rig } from "./Rig";
@@ -20,16 +21,89 @@ import { Ink, InkFXAA } from "./planet/Ink";
  * piece of the town is drawn once (culling off) so all its shaders compile and all its geometry
  * reaches the GPU behind the loader. Otherwise each street would compile or upload the first time it
  * came into view, mid-run, as a hitch of 50-120 ms (on Windows, shader compiles are slow).
+ *
+ * Before those frames, the work they would do all at once (a second and a half on a laptop, frozen,
+ * the loading bar stuck) is done a piece at a time (inSlices: a slice, then the page's turn): the
+ * shaders set up a few objects at a time (the GPU driver compiles them on its own threads meanwhile),
+ * then the drawings and paint sent up to the GPU, and each shape's bounds measured. Not frame by frame: while the GPU compiles, frames
+ * come a second apart. Nothing is drawn meanwhile (the scene hidden: the loader covers it).
  */
 const WARM_FRAMES = 2;
+/** Objects whose shaders are set up at a time. */
+const PREP_BATCH = 12;
+function texturesOf(scene: THREE.Scene) {
+  const out = new Set<THREE.Texture>();
+  const add = (v: unknown) => {
+    const t = v as THREE.Texture | null;
+    if (t?.isTexture && t.version > 0 && !(t as THREE.Texture & { isRenderTargetTexture?: boolean }).isRenderTargetTexture) out.add(t);
+  };
+  scene.traverse((o) => {
+    const m = (o as THREE.Mesh).material;
+    if (!m) return;
+    for (const mat of Array.isArray(m) ? m : [m]) {
+      Object.values(mat).forEach(add);
+      const uniforms = (mat as THREE.ShaderMaterial).uniforms;
+      if (uniforms) Object.values(uniforms).forEach((u) => add(u?.value));
+    }
+  });
+  return [...out];
+}
+function* prepSteps(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  const objects: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    const r = o as THREE.Mesh & { isPoints?: boolean; isLine?: boolean; isSprite?: boolean };
+    if (r.material && (r.isMesh || r.isPoints || r.isLine || r.isSprite)) objects.push(o);
+  });
+  for (let i = 0; i < objects.length; i += PREP_BATCH) {
+    const batch = objects.slice(i, i + PREP_BATCH);
+    // (three's compile, handed a few objects at a time; the scene shown while it gathers its lights)
+    const some = { traverse: (f: (o: THREE.Object3D) => void) => batch.forEach(f), traverseVisible: () => {} };
+    scene.visible = true;
+    gl.compile(some as unknown as THREE.Object3D, camera, scene);
+    scene.visible = false;
+    yield;
+  }
+  // Each shader, once the driver has it done (asking doesn't wait), read for its settings: the first
+  // frame to use one otherwise waits on it there.
+  type Program = THREE.WebGLProgram & { isReady?: () => boolean };
+  for (const p of (gl.info.programs ?? []) as Program[]) {
+    while (p.isReady && !p.isReady()) yield new Promise((r) => setTimeout(r, 16));
+    p.getUniforms();
+    yield;
+  }
+  for (const t of texturesOf(scene)) {
+    gl.initTexture(t);
+    yield;
+  }
+  // (and each shape's bounds, worked out the first time it is checked for being in view)
+  for (const o of objects) {
+    const g = (o as THREE.Mesh).geometry;
+    if (g && !g.boundingSphere) g.computeBoundingSphere();
+    yield;
+  }
+}
 function Ready() {
   const n = useRef(0);
   const scene = useThree((s) => s.scene);
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const prepared = useRef(false);
+  useEffect(() => {
+    let live = true;
+    scene.visible = false;
+    void inSlices(prepSteps(gl, scene, camera)).then(() => void (live && (prepared.current = true)));
+    return () => {
+      live = false;
+      scene.visible = true;
+    };
+  }, [gl, scene, camera]);
   useFrame(() => {
+    if (!prepared.current) return;
     const k = n.current++;
     if (k > WARM_FRAMES) return;
     const warm = k < WARM_FRAMES;
     warmUp.on = warm;
+    scene.visible = true;
     scene.traverse((o) => {
       if (!(o as THREE.Mesh).isMesh) return;
       if (warm) {
@@ -300,6 +374,8 @@ export default function Scene() {
       onCreated={({ gl, scene }) => {
         // Flat toon colours, shown as painted: no filmic curve.
         gl.toneMapping = THREE.NoToneMapping;
+        // (reading each shader's compile log back waits on the GPU: only while testing, ?debug)
+        gl.debug.checkShaderErrors = location.search.includes("debug");
         scene.fog = new THREE.Fog("#abd9d0", 34, 110);
         // three picks shadow casters by the main camera's layers, so the town's large shapes (on
         // their own layer, so the camera doesn't draw them up close; see Planet's Culled) never
@@ -315,33 +391,38 @@ export default function Scene() {
       }}
       fallback={<div className="journey-fallback" />}
     >
-      {/* A fixed resolution, no auto-switching: changing it mid-run resizes every buffer and hitches. */}
-      {/* Rig must mount first: it puts the walker on the road before anything reads it. */}
-      <Rig />
-      {/* Strong sky fill, softer sun: shadows stay readable mid-tones (about 60% of lit) as in a
-          painted scene, not near-black holes. */}
-      <hemisphereLight args={["#d8ecea", "#a3bba3", 2.6]} />
-      <Sky />
-      <Planet />
-      <Runner shadows={live.shadow} />
-      <Others />
-      <Ready />
-      <AutoQuality />
-      <Pacer mode={live.pace} />
-      {/* 8-bit buffers: the colours are flat and untonemapped, so half-float precision bought nothing
-          and cost ~9 ms a frame in memory bandwidth on integrated GPUs. */}
-      <EffectComposer multisampling={0} frameBufferType={THREE.UnsignedByteType}>
-        {/* Line weight in rendered pixels: thinner when the internal resolution is lower, so the
-            lines keep their on-screen weight after the upscale. */}
-        {/* (past 1.5x, a phone's, thicker in step: the same weight on screen as at 1.5x) */}
-        {ink ? <Ink thickness={dpr > 1.5 ? (1.7 * dpr) / 1.5 : dpr > 1.2 ? 1.7 : dpr < 0.9 ? 1.05 : 1.3} /> : <></>}
-        <Vignette offset={0.45} darkness={0.15} />
-        <Noise opacity={0.018} premultiply />
-        {/* Smooths the stair-steps on moving edges and ink lines. FXAA is one pass (SMAA is three and
-            measured ~5 ms a frame on an integrated GPU); SMAA stays switchable from ?fps to compare. */}
-        {live.aa === "fxaa" ? <InkFXAA /> : live.aa === "smaa" ? <SMAA /> : <></>}
-      </EffectComposer>
-      <DebugStepper />
+      {/* The world goes up all at once, when the town's layout has been worked out (Planet waits on
+          it, worked out a slice at a time so the page doesn't freeze): nothing is drawn, and the
+          loader stays up, until then. */}
+      <Suspense fallback={null}>
+        {/* A fixed resolution, no auto-switching: changing it mid-run resizes every buffer and hitches. */}
+        {/* Rig must mount first: it puts the walker on the road before anything reads it. */}
+        <Rig />
+        {/* Strong sky fill, softer sun: shadows stay readable mid-tones (about 60% of lit) as in a
+            painted scene, not near-black holes. */}
+        <hemisphereLight args={["#d8ecea", "#a3bba3", 2.6]} />
+        <Sky />
+        <Planet />
+        <Runner shadows={live.shadow} />
+        <Others />
+        <Ready />
+        <AutoQuality />
+        <Pacer mode={live.pace} />
+        {/* 8-bit buffers: the colours are flat and untonemapped, so half-float precision bought nothing
+            and cost ~9 ms a frame in memory bandwidth on integrated GPUs. */}
+        <EffectComposer multisampling={0} frameBufferType={THREE.UnsignedByteType}>
+          {/* Line weight in rendered pixels: thinner when the internal resolution is lower, so the
+              lines keep their on-screen weight after the upscale. */}
+          {/* (past 1.5x, a phone's, thicker in step: the same weight on screen as at 1.5x) */}
+          {ink ? <Ink thickness={dpr > 1.5 ? (1.7 * dpr) / 1.5 : dpr > 1.2 ? 1.7 : dpr < 0.9 ? 1.05 : 1.3} /> : <></>}
+          <Vignette offset={0.45} darkness={0.15} />
+          <Noise opacity={0.018} premultiply />
+          {/* Smooths the stair-steps on moving edges and ink lines. FXAA is one pass (SMAA is three and
+              measured ~5 ms a frame on an integrated GPU); SMAA stays switchable from ?fps to compare. */}
+          {live.aa === "fxaa" ? <InkFXAA /> : live.aa === "smaa" ? <SMAA /> : <></>}
+        </EffectComposer>
+        <DebugStepper />
+      </Suspense>
     </Canvas>
   );
 }

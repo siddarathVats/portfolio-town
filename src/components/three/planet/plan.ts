@@ -113,7 +113,13 @@ export type Npc = { id: string; pos: THREE.Vector3; look: THREE.Vector3; who: nu
 export type Pickable = { blades: THREE.BufferGeometry; flowers: THREE.InstancedBufferGeometry };
 
 
-export function buildPlan() {
+/**
+ * The town's layout: every building, prop, tree and person, laid out from fixed random sequences.
+ * Worked out as a series of steps (a `yield` between them), so the page can do it a slice at a time
+ * (planInSlices) rather than in one go: half a second on a laptop, two or more on a phone, through
+ * which the page would otherwise stand frozen, its loading bar stuck.
+ */
+function* planSteps() {
   const r = rng(11);
   const chunks = Array.from({ length: CHUNKS }, () => new P.Geo());
   const chunkOf = (s: number) => chunks[Math.floor((wrapS(s) / ROUTE_LENGTH) * CHUNKS) % CHUNKS];
@@ -176,6 +182,7 @@ export function buildPlan() {
 
   // The road itself is never built on.
   for (let s = 0; s < ROUTE_LENGTH; s += 0.8) taken.push({ p: routePoint(s), r: PAVE_HALF - 0.2, road: true });
+  yield;
   /** Each building draws from its own random sequence, so how it is dressed never shifts anything else. */
   const own = () => rng(Math.floor(r() * 4294967296));
   /** A stop's own building, dressed in full. */
@@ -298,6 +305,7 @@ export function buildPlan() {
     }
   });
 
+  yield;
   // ---------- the hillside town ----------
   // A lane of houses, shops and small blocks with slivers of space between them, each turned a
   // little off square and set a little in or out, and a thin scatter of roofs on the slopes behind.
@@ -376,6 +384,7 @@ export function buildPlan() {
     let end = -Infinity;
     // (the last few metres before the stream are left open: the lane opens out to the view of it)
     while (s < t1 - LANE_OPEN) {
+      yield;
       const w = 2.8 + r() * 1.2;
       const d = 2.6 + r() * 0.5;
       // (wide enough for a cornice or the eaves on both sides of it)
@@ -444,6 +453,7 @@ export function buildPlan() {
   // The open lots: a garden behind a low wall with a gap for a gate (a tree, a shrub, the verge's
   // flowers in the grass), or a view up the hillside past a white railing.
   for (const lot of lots) {
+    yield;
     const len = lot.to - lot.from;
     const c = (lot.from + lot.to) / 2;
     if (lot.kind === "garden") {
@@ -523,6 +533,7 @@ export function buildPlan() {
   };
   const wet = (s: number, lat: number, gap: number) => byFall(s, lat) || inBrook(s, lat, gap);
   for (let s = ZONES.river[0]; s < ZONES.forest[1]; s += 0.9) {
+    yield;
     for (let k = 0; k < 3; k++) {
       const side = r() < 0.5 ? -1 : 1;
       const lat = side * (2.7 + r() * 9);
@@ -552,6 +563,7 @@ export function buildPlan() {
 
   // ---------- the fields on the way home ----------
   for (let s = ZONES.fields[0]; s < ZONES.fields[1]; s += 2.2) {
+    yield;
     for (const side of [-1, 1]) {
       if (free(beside(s, side * 2.6, v), 0.2)) P.fence(facing(s, side * 2.6), 2.1);
       for (let k = 0; k < 2; k++) {
@@ -567,6 +579,7 @@ export function buildPlan() {
 
   // Grass tufts and flowers along every verge.
   for (let s = 0; s < ROUTE_LENGTH; s += 0.6) {
+    yield;
     const side = r() < 0.5 ? -1 : 1;
     const lat = side * (PAVE_HALF + 0.35 + r() * 2.5);
     if (!free(beside(s, lat, v), 0.2)) continue;
@@ -578,6 +591,7 @@ export function buildPlan() {
 
   // The rest of the planet: woods and meadows to the horizon in every direction.
   for (let k = 0; k < 380; k++) {
+    yield;
     const p = randomSurface(r, new THREE.Vector3());
     if (distanceToRoute(p) < 12 || !free(p, 1.2)) continue;
     const s = nearestS(p);
@@ -594,6 +608,7 @@ export function buildPlan() {
     }
   }
 
+  yield;
   // ---------- the waterfall ----------
   // The stream springs from under a ledge of boulders off to the right of the bridge and falls into
   // a pool: rocks frame the fall, shrubs and grass grow on top. (Its own random sequence, so nothing
@@ -639,6 +654,7 @@ export function buildPlan() {
       P.tuft(sub(x, y, z), q);
   }
 
+  yield;
   // ---------- the forest floor ----------
   // Grass and ferns between the trees, thick by the path and thinning out up the slopes; none in the
   // stream, on the bridge, round a trunk or in the waterfall's pool. (Its own sequence again.)
@@ -646,6 +662,7 @@ export function buildPlan() {
     const q = rng(53);
     const p = new THREE.Vector3();
     for (let s = ZONES.river[0]; s < ZONES.forest[1]; s += 0.3) {
+      yield;
       const lat = (q() < 0.5 ? -1 : 1) * (1.0 + Math.pow(q(), 1.7) * 9);
       const sa = s + q() * 0.3;
       beside(sa, lat, p);
@@ -676,24 +693,71 @@ export function buildPlan() {
     for (let k = 1; k <= 6 && wallGap(n.pos) < 0.45; k++) onGround(beside(s, lat - Math.sign(lat) * 0.1 * k, n.pos));
   });
 
-  return {
-    chunks: chunks.filter((c) => !c.empty).map((c) => c.build()),
-    decals: chunks.map((c) => c.buildDecals()).filter((g): g is THREE.BufferGeometry => g !== null),
-    panes: chunks.map((c) => c.buildSheet("windows")).filter((g): g is THREE.BufferGeometry => g !== null),
-    signs: chunks.map((c) => c.buildSheet("signs")).filter((g): g is THREE.BufferGeometry => g !== null),
-    vending: chunks.map((c) => c.buildSheet("vending")).filter((g): g is THREE.BufferGeometry => g !== null),
-    roadsigns: chunks.map((c) => c.buildSheet("roadsigns")).filter((g): g is THREE.BufferGeometry => g !== null),
-    props: chunks.map((c) => c.buildProps()).filter((g): g is THREE.InstancedBufferGeometry => g !== null),
-    leaves: chunks.map((c) => c.buildLeaves()).filter((g): g is THREE.InstancedBufferGeometry => g !== null),
-    blades: chunks.map((c) => c.buildBlades()).filter((g): g is THREE.BufferGeometry => g !== null),
-    flowers: chunks.map((c) => c.buildFlowers()).filter((g): g is THREE.InstancedBufferGeometry => g !== null),
-    stone: chunks.map((c) => c.buildStone()).filter((g): g is THREE.BufferGeometry => g !== null),
-    landmarks,
-    npcs,
-    garden,
-    pickables,
-    kerbs,
-  };
+  // The geometry, each kind for every section of the town in turn.
+  yield;
+  const sheets = <T,>(make: (c: P.Geo) => T | null) => chunks.map(make).filter((g): g is T => g !== null);
+  const out = { chunks: chunks.filter((c) => !c.empty).map((c) => c.build()) };
+  yield;
+  const decals = sheets((c) => c.buildDecals());
+  const panes = sheets((c) => c.buildSheet("windows"));
+  const signs = sheets((c) => c.buildSheet("signs"));
+  const vending = sheets((c) => c.buildSheet("vending"));
+  const roadsigns = sheets((c) => c.buildSheet("roadsigns"));
+  yield;
+  const props = sheets((c) => c.buildProps());
+  yield;
+  const leaves = sheets((c) => c.buildLeaves());
+  yield;
+  const blades = sheets((c) => c.buildBlades());
+  const flowers = sheets((c) => c.buildFlowers());
+  const stone = sheets((c) => c.buildStone());
+  return { ...out, decals, panes, signs, vending, roadsigns, props, leaves, blades, flowers, stone, landmarks, npcs, garden, pickables, kerbs };
+}
+
+export type TownPlan = ReturnType<typeof buildPlan>;
+
+/** The town's layout, all in one go (scripts and tests). */
+export function buildPlan() {
+  const steps = planSteps();
+  for (;;) {
+    const n = steps.next();
+    if (n.done) return n.value;
+  }
+}
+
+/** How long each slice of work may run (ms): about a frame, so the page stays responsive. */
+const SLICE_MS = 12;
+/** Back after the browser has had its turn (a message to itself: unlike a timeout, never held back). */
+const breathe = () =>
+  new Promise<void>((resolve) => {
+    const c = new MessageChannel();
+    c.port1.onmessage = () => {
+      c.port1.close();
+      resolve();
+    };
+    c.port2.postMessage(0);
+  });
+/** Runs a piece of work written as steps (a `yield` between them) a slice at a time, the page
+ *  drawing and answering in between; its result. A step can yield a promise to wait on. */
+export async function inSlices<T>(steps: Generator<unknown, T>) {
+  let t = performance.now();
+  for (;;) {
+    const n = steps.next();
+    if (n.done) return n.value;
+    if (n.value instanceof Promise) {
+      await n.value;
+      t = performance.now();
+    } else if (performance.now() - t > SLICE_MS) {
+      await breathe();
+      t = performance.now();
+    }
+  }
+}
+let planned: Promise<TownPlan> | null = null;
+/** The town's layout, worked out a slice at a time. Once: every call has the same one. */
+export function planInSlices() {
+  planned ??= inSlices(planSteps());
+  return planned;
 }
 
 /** Rough s of the road point nearest a surface point. */
