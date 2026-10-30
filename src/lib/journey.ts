@@ -194,6 +194,8 @@ export const journey = {
 export const OPEN_DETAILS_EVENT = "journey:open-details";
 export const SCENE_READY_EVENT = "journey:scene-ready";
 export const FAST_TRAVEL_EVENT = "journey:fast-travel";
+/** The visitor asked to go somewhere (a stop, the menu, the map): detail, where to (0..1 of the page). */
+export const JUMP_EVENT = "journey:jump";
 /** A lap is done: the page goes back to the top while the walker carries on through the front door. */
 export const LAP_EVENT = "journey:lap";
 
@@ -214,3 +216,11 @@ export const PERSON_AT: Record<string, number> = Object.fromEntries(
     return at === null ? [] : [[b.id, b.s + at] as const];
   }),
 );
+
+/**
+ * Where a jump to each stop lands (0..1, by BLOCKS index): beside its person, where the walk stops
+ * for them, so they are in the picture and say their line; else at the stop. (The menu and the map
+ * used to land on the top of the stop's stretch of page: for the inventory 17 m short of the shop,
+ * with the shopkeeper nowhere in sight; and a step landed just past the person, at the frame's edge.)
+ */
+export const landingProgress = BLOCKS.map((b, i) => (b.id in PERSON_AT ? progressAt(PERSON_AT[b.id] / WALK_SPEED) : stopProgress[i]));

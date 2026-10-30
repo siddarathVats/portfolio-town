@@ -9,7 +9,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { deliveries } from "@/lib/deliveries";
 import { autopilot } from "@/lib/autopilot";
 import { GIFT_LINE, GIFT_TO, GOT_S, OFFER_S, PICK_S, PICK_TIMES, SAY_HOLD_S, THANKS_S, TOSS_S, TYPE_CPS, WALK_UP_S, WAVE_S, gift, graphemes } from "@/lib/gift";
-import { WALK_SPEED, journey, progressAt } from "@/lib/journey";
+import { JUMP_EVENT, WALK_SPEED, journey, progressAt, routeS } from "@/lib/journey";
 import { scrollToProgress } from "@/lib/scroll";
 import { REACT_AT, TALK_S, talk } from "@/lib/talk";
 import { BRAKE } from "@/lib/locomotion";
@@ -471,6 +471,36 @@ function Npcs({ npcs, garden, pickables }: { npcs: Npc[]; garden: { s: number; s
     hand.right.set(1, 0, 0).applyQuaternion(camera.quaternion);
     return hand.v.subVectors(p, camera.position).dot(hand.right) >= 0 ? 1 : -1;
   };
+
+  // Asked to go somewhere (Next stop, the menu, the map), the visitor isn't kept for the flowers: a
+  // jump on past the girl skips them this time round, and one made while they are being given finishes
+  // it at once, the bunch in her hands. (A phone's Next stop from the Experience heading ran into the
+  // whole scene, the page held where he stood, and the next stop was a press further on.) Walking or
+  // scrolling there, it plays as ever.
+  useEffect(() => {
+    const h = people[girl];
+    if (!h) return;
+    const onJump = (e: Event) => {
+      const g = gift;
+      const to = routeS((e as CustomEvent<number>).detail);
+      if (g.phase === "ready") {
+        if (loopDelta(journey.s, garden.s) > -0.5 && loopDelta(journey.s, to) > 0 && loopDelta(h.s, to) > 0) g.go("given");
+        return;
+      }
+      if (g.phase === "given") return;
+      stems.forEach((m) => (m.visible = false));
+      bouquet.root.visible = false;
+      h.m.mood("flowers");
+      talk.mine = "";
+      // (let go, without walking the page back to where he stands: it is on its way somewhere)
+      journey.stopAt = null;
+      if (hand.held) autopilot.hold(false);
+      hand.held = false;
+      g.go("given");
+    };
+    window.addEventListener(JUMP_EVENT, onJump);
+    return () => window.removeEventListener(JUMP_EVENT, onJump);
+  }, [people, girl, garden, stems, bouquet, hand]);
 
   /** The flowers, one step a frame (lib/gift.ts). */
   const flowers = (h: (typeof people)[number], camera: THREE.Camera, dt: number) => {

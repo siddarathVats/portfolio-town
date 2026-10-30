@@ -266,7 +266,9 @@ function* planSteps() {
       if (dressedAt(s)) P.lantern(k, ahead ? -1.05 : 1.05, 2.45, 1.7);
       // (the vending machine on the near side of the shop: past it the lane bends for the bridge, and
       // the camera, easing onto the bridge's line behind the courier, came through it there)
-      P.vending(facing(s - 2.1, side * 1.5, 0.4), r);
+      // (back by the shop's side wall, out of the kerb: in front of it, it stood between the camera
+      // and the shopkeeper, who said his line from behind it)
+      P.vending(facing(s - 2.1, side * 2.45, 0.4), r);
       spans.push({ side, from: s - 2.6, to: s - 1.6 });
       npc(b.id, PERSON_AT[b.id], side * KERBSIDE);
       mark(side * 3.15, 2 * P.FLOOR, true);
@@ -275,8 +277,10 @@ function* planSteps() {
       // a barrier with warning signs, and a bench to sit and look.
       P.barrier(facing(s - 4.5, 2.2, 0.4), 1.6);
       P.barrier(facing(s - 6.5, 2.4, 0.4), 1.6);
-      P.warningSign(facing(s - 5.5, 1.6, 0.3));
-      P.noEntry(facing(s - 7.5, -1.6, 0.3));
+      // (the signs back by the barriers: at the road's edge, their poles stood up through the middle
+      // of the picture as the camera rose for the view)
+      P.warningSign(facing(s - 5.5, 2.9, 0.3));
+      P.noEntry(facing(s - 7.5, -2.6, 0.3));
       P.bench(facing(s - 5.5, -2.4, 0.6));
       // The stream runs across the road here; the bridge carries the road over it.
       P.bridge(along(s, 0), 2.4);

@@ -3,7 +3,7 @@
 import Lenis from "lenis";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { BLOCKS, FAST_TRAVEL_EVENT, journey, routeS } from "./journey";
+import { BLOCKS, FAST_TRAVEL_EVENT, JUMP_EVENT, journey, landingProgress, routeS } from "./journey";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -225,6 +225,7 @@ const COVER_MS = 470;
 function goTo(y: number, label: string, duration: number) {
   manual();
   const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  window.dispatchEvent(new CustomEvent(JUMP_EVENT, { detail: y / max }));
   if (!lenis) return window.scrollTo({ top: y, behavior: journey.reducedMotion ? "auto" : "smooth" });
   if (Math.abs(routeS(y / max) - routeS(journey.target)) <= TRAVEL_M) return void lenis.scrollTo(y, { duration, easing: inOut });
   window.dispatchEvent(new CustomEvent(FAST_TRAVEL_EVENT, { detail: label }));
@@ -236,12 +237,15 @@ function goTo(y: number, label: string, duration: number) {
   }, COVER_MS);
 }
 
-/** Go to a block of the page (by id); `label` names it on the fast-travel cover if it is far. */
+/** Go to a block of the page (by id): a stop, beside its person (landingProgress). `label` names it
+ *  on the fast-travel cover if it is far. */
 export function scrollToId(id: string, label?: string) {
   const el = document.getElementById(id);
   if (!el) return;
-  label ??= BLOCKS.find((b) => b.id === id)?.label ?? el.querySelector("h1, h2, h3")?.textContent?.trim() ?? "";
-  goTo(el.getBoundingClientRect().top + window.scrollY, label, 2.4);
+  const i = BLOCKS.findIndex((b) => b.id === id);
+  label ??= BLOCKS[i]?.label ?? el.querySelector("h1, h2, h3")?.textContent?.trim() ?? "";
+  if (i < 0) return goTo(el.getBoundingClientRect().top + window.scrollY, label, 2.4);
+  goTo(landingProgress[i] * Math.max(0, document.documentElement.scrollHeight - window.innerHeight), label, 2.4);
 }
 
 /** Scroll to a point of the walk (0..1 of the page), as the visitor would: the autopilot hands over.

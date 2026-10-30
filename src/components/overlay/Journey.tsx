@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { BLOCKS, LAP_EVENT, expSide, journey, openDetails, stopProgress } from "@/lib/journey";
+import { BLOCKS, LAP_EVENT, expSide, journey, landingProgress, openDetails, stopProgress } from "@/lib/journey";
 import { deliveries } from "@/lib/deliveries";
 import { startScroll, scrollToId, scrollToProgress } from "@/lib/scroll";
 import { autopilot } from "@/lib/autopilot";
@@ -101,7 +101,7 @@ function Stepper() {
     // intro are still up, so a step there seemed to do nothing)
     const k = at === 0 && d > 0 ? ABOUT : Math.min(STEPS.length - 1, Math.max(0, at + d));
     setAt(k);
-    scrollToProgress(stopProgress[STEPS[k]]);
+    scrollToProgress(landingProgress[STEPS[k]]);
   };
   return (
     <nav className="stepper" aria-label="Stops">

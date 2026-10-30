@@ -33,6 +33,9 @@ const CRANE_FALL = 6;
 const INTRO = 3.4;
 /** How long the courier must keep going the other way before the camera swings round behind them (s). */
 const SIDE_HOLD = 0.5;
+/** How far toward a wide picture's edge (-1..1) someone stopped beside may stand before the camera
+ *  brings them in. */
+const HOST_MARGIN = 0.78;
 import { COURIER_SCALE, Courier, loadRainArt, rainArtReady, sunlight } from "./sprite";
 
 /** How long the courier waves on stopping beside someone (s), before standing turned to them. */
@@ -316,9 +319,10 @@ export function Runner({ shadows: mapSize }: { shadows: number }) {
     // the road the courier is running on stays in view.
     // While the girl is in the scene (she sees him coming, he walks up and gives her the flowers), the
     // camera makes room for her too: it slides over toward her side and draws back a little, as far
-    // as it takes to have them both in the picture (the phone's narrow frame cut her off). On a phone
-    // it does the same for whoever he stops beside at a stop, who stood half off its edge.
-    const host = portrait && !gift.framing ? journey.greet : null;
+    // as it takes to have them both in the picture (the phone's narrow frame cut her off). It does the
+    // same, by less on a wide screen, for whoever he stops beside at a stop, who stood half off a
+    // phone's edge, and on a laptop's at the bends (the professor under the minimap).
+    const host = !gift.framing ? journey.greet : null;
     if (gift.framing) r.frameAt.copy(gift.frame);
     else if (host) r.frameAt.set(host.at.x, host.at.y, host.at.z);
     r.frameK = spring2(r.frameK, gift.framing || (host ? 1 : 0), r.v, "frameK", 4.5, dt);
@@ -391,7 +395,14 @@ export function Runner({ shadows: mapSize }: { shadows: number }) {
     // (making room for someone on a phone, it centres on the two of them instead: the slide toward
     // them alone, on a bend, still left them off the edge)
     let keep = over * halfWidth;
-    if (portrait && r.frameK > 0.01) keep = THREE.MathUtils.lerp(keep, ((seen.x + r.frameSeen.copy(r.frameAt).project(camera).x) / 2) * halfWidth, r.frameK);
+    const hostSeen = r.frameK > 0.01 ? r.frameSeen.copy(r.frameAt).project(camera) : null;
+    if (portrait && hostSeen) keep = THREE.MathUtils.lerp(keep, ((seen.x + hostSeen.x) / 2) * halfWidth, r.frameK);
+    else if (hostSeen && hostSeen.z < 1) {
+      // (a wide picture has room for them both: only someone near its edge is brought in, and no
+      // further than keeps the courier inside it too)
+      const out = hostSeen.x - THREE.MathUtils.clamp(hostSeen.x, -HOST_MARGIN, HOST_MARGIN);
+      keep += THREE.MathUtils.clamp(out, seen.x - 0.85, seen.x + 0.85) * halfWidth * r.frameK;
+    }
     r.keep = spring(r.keep, I.done ? keep : 0, r.v, "keep", 3, dt);
     const sideways = r.sr.setFromMatrixColumn(camera.matrixWorld, 0);
     pos.addScaledVector(sideways, r.keep);
